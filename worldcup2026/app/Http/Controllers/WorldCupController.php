@@ -3,163 +3,213 @@
 namespace App\Http\Controllers;
 
 use App\Services\SportsDbClient;
+use App\Support\WorldCupDraw;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\View\View;
 
 class WorldCupController extends Controller
 {
     public function __construct(private SportsDbClient $sports) {}
 
-    /** Render the dashboard shell. The data is loaded by the JS via /api/snapshot. */
+    /**
+     * Render the dashboard shell. The Blade template pre-renders the static
+     * draw (12 groups × 4 teams + full bracket scaffold) so the page is
+     * useful even before the JS overlay loads. JS then tops it up with
+     * live scores from /api/snapshot.
+     */
     public function index(): View
     {
         return view('worldcup.index', [
-            'league' => $this->sports->league(),
+            'league'   => $this->sports->league(),
+            'groups'   => WorldCupDraw::groups(),   // for server-side render
+            'bracket'  => WorldCupDraw::bracket(),  // for server-side render
         ]);
     }
 
-    /** Live snapshot consumed by the front-end every few seconds. */
+    /** JSON snapshot consumed by the front-end every 10 s. */
     public function snapshot(): JsonResponse
     {
-        $snap = $this->sports->snapshot();
+        $snap   = $this->sports->snapshot();
         $season = $snap['season'] ?? [];
 
-        // Shape the match cards (so JS gets uniform keys).
+        // Shape the match cards (uniform keys for the JS).
         $snap['live']     = array_map(fn($e) => $this->shapeMatch($e), $snap['live'] ?? []);
         $snap['upcoming'] = array_map(fn($e) => $this->shapeMatch($e), $snap['upcoming'] ?? []);
         $snap['recent']   = array_map(fn($e) => $this->shapeMatch($e), $snap['recent'] ?? []);
 
-        $snap['bracket']   = $this->buildBracket($season);
-        $snap['groups']    = $this->buildGroups($season);
-        // Always-useful fallback while TheSportsDB hasn't labeled groups yet.
-        $snap['matchdays'] = $this->buildMatchdays($season);
+        // Standings: start from the static draw, then overlay played-match results.
+        $snap['groups']  = $this->buildGroupStandings($season);
 
-        // Drop the heavy raw season array to keep the response small.
+        // Bracket: start from the static scaffold, then resolve any matches
+        // that the API has actually played (look up by team-pair).
+        $snap['bracket'] = $this->buildBracketWithResults($season);
+
         unset($snap['season']);
         return response()->json($snap);
     }
 
-    // ---------- Derivations from event list ----------
+    // ---------- Standings ----------
 
     /**
-     * Group season events into bracket rounds.
-     *
-     * TheSportsDB sets `intRound` for events. Soccer cups commonly use:
-     *  125=Final, 150=Semi, 200=Quarter, 250=R16, 350=R32, 500=Group stage.
-     * If `intRound` is missing we fall back to `strRound`.
+     * Build 12 group tables. Every team starts at 0/0/0 (so the page never
+     * looks empty), and any played event whose teams both belong to the
+     * same group gets folded into the points table.
      */
-    private function buildBracket(array $events): array
+    private function buildGroupStandings(array $events): array
     {
+        $draw = WorldCupDraw::groups();
+
+        // Initialize empty tables.
+        $teamGroup = []; // normalized team name -> group letter
+        $tables    = []; // group letter -> [team -> stats]
+        foreach ($draw as $letter => $teams) {
+            $tables[$letter] = [];
+            foreach ($teams as $t) {
+                $tables[$letter][$t['team']] = [
+                    'team' => $t['team'],
+                    'iso'  => $t['iso'],
+                    'mp'   => 0, 'w' => 0, 'd' => 0, 'l' => 0,
+                    'gf'   => 0, 'ga' => 0, 'gd' => 0, 'pts' => 0,
+                    'form' => [], // last 5 results: 'W' | 'D' | 'L'
+                ];
+                $teamGroup[$this->normalize($t['team'])] = $letter;
+            }
+        }
+
+        // TheSportsDB sometimes returns slightly different spellings. Map them.
+        $apiAliases = [
+            'south korea'        => 'Korea Republic',
+            'czech republic'     => 'Czechia',
+            'bosnia-herzegovina' => 'Bosnia and Herzegovina',
+            'ivory coast'        => "Côte d'Ivoire",
+            'iran'               => 'IR Iran',
+            'cape verde'         => 'Cabo Verde',
+            'turkey'             => 'Türkiye',
+            'dr congo'           => 'Congo DR',
+            'curacao'            => 'Curaçao',
+        ];
+        $resolveTeam = function (?string $name) use ($teamGroup, $apiAliases): ?string {
+            if (!$name) return null;
+            $norm = $this->normalize($name);
+            $canonical = $apiAliases[$norm] ?? $name;
+            $lookup = $this->normalize($canonical);
+            return isset($teamGroup[$lookup]) ? $canonical : null;
+        };
+
+        // Sort events chronologically so 'form' is in the right order.
+        usort($events, fn($a, $b) => strcmp(
+            ($a['dateEvent'] ?? '') . ($a['strTime'] ?? ''),
+            ($b['dateEvent'] ?? '') . ($b['strTime'] ?? '')
+        ));
+
+        foreach ($events as $e) {
+            $home = $resolveTeam($e['strHomeTeam'] ?? null);
+            $away = $resolveTeam($e['strAwayTeam'] ?? null);
+            if (!$home || !$away) continue;
+
+            $hs = $e['intHomeScore'] ?? null;
+            $as = $e['intAwayScore'] ?? null;
+            if ($hs === null || $hs === '' || $as === null || $as === '') continue;
+
+            $g = $teamGroup[$this->normalize($home)] ?? null;
+            // Only count matches where both teams are in the SAME group.
+            if (!$g || ($teamGroup[$this->normalize($away)] ?? null) !== $g) continue;
+
+            $hs = (int)$hs; $as = (int)$as;
+            $h =& $tables[$g][$home];
+            $a =& $tables[$g][$away];
+
+            $h['mp']++; $a['mp']++;
+            $h['gf'] += $hs; $h['ga'] += $as;
+            $a['gf'] += $as; $a['ga'] += $hs;
+
+            if ($hs > $as) {
+                $h['w']++; $h['pts'] += 3; $a['l']++;
+                $h['form'][] = 'W'; $a['form'][] = 'L';
+            } elseif ($hs < $as) {
+                $a['w']++; $a['pts'] += 3; $h['l']++;
+                $a['form'][] = 'W'; $h['form'][] = 'L';
+            } else {
+                $h['d']++; $a['d']++; $h['pts']++; $a['pts']++;
+                $h['form'][] = 'D'; $a['form'][] = 'D';
+            }
+            unset($h, $a);
+        }
+
+        // Finalize: GD, last-5 form, sort each group.
+        $out = [];
+        foreach ($tables as $letter => $teams) {
+            foreach ($teams as &$t) {
+                $t['gd']   = $t['gf'] - $t['ga'];
+                $t['form'] = array_slice($t['form'], -5);
+            }
+            usort($teams, fn($x, $y) =>
+                [$y['pts'], $y['gd'], $y['gf']] <=> [$x['pts'], $x['gd'], $x['gf']]);
+            $out[] = ['name' => "Group $letter", 'letter' => $letter, 'table' => array_values($teams)];
+        }
+        return $out;
+    }
+
+    // ---------- Bracket ----------
+
+    /**
+     * Return the static FIFA bracket, overlayed with any live results.
+     * For each scaffold match we look for a TheSportsDB event whose
+     * round string contains the FIFA M-number, OR whose team pair has
+     * been resolved from a feeder slot (e.g. "1E" → Group E winner).
+     *
+     * The slot resolution is best-effort: when the static slot still
+     * holds a placeholder (e.g. "W74"), we leave it as-is so the UI
+     * displays the FIFA code.
+     */
+    private function buildBracketWithResults(array $events): array
+    {
+        $bracket = WorldCupDraw::bracket();
+
+        // Index API events by FIFA M-number when present in strRound.
+        $byMid = [];
+        foreach ($events as $e) {
+            $round = (string)($e['strRound'] ?? '');
+            if (preg_match('/\bM\d+\b/i', $round, $m)) {
+                $byMid[strtoupper($m[0])] = $e;
+            }
+        }
+
         $rounds = [
-            'r32'   => ['title' => 'Round of 32',   'matches' => []],
-            'r16'   => ['title' => 'Round of 16',   'matches' => []],
-            'qf'    => ['title' => 'Quarter-finals','matches' => []],
-            'sf'    => ['title' => 'Semi-finals',   'matches' => []],
-            'third' => ['title' => 'Third Place',   'matches' => []],
-            'final' => ['title' => 'Final',         'matches' => []],
+            'r32'   => 'Round of 32',
+            'r16'   => 'Round of 16',
+            'qf'    => 'Quarter-finals',
+            'sf'    => 'Semi-finals',
+            'third' => 'Third Place',
+            'final' => 'Final',
         ];
 
-        foreach ($events as $e) {
-            $key = $this->classifyRound($e);
-            if ($key === null) continue;
-            $rounds[$key]['matches'][] = $this->shapeMatch($e);
-        }
-
-        // Sort each round chronologically.
-        foreach ($rounds as &$r) {
-            usort($r['matches'], fn($a, $b) => strcmp($a['kickoff'] ?? '', $b['kickoff'] ?? ''));
-        }
-        return array_values($rounds);
-    }
-
-    /** Group-stage standings derived from finished events with scores. */
-    private function buildGroups(array $events): array
-    {
-        $groups = [];
-        foreach ($events as $e) {
-            $round = strtolower((string)($e['strRound'] ?? ''));
-            // Only build standings when TheSportsDB tags the round with "Group X".
-            if (!preg_match('/group\s+([a-l])/i', $round, $m)) continue;
-            $groupKey = strtoupper($m[1]);
-            $groups[$groupKey] ??= [];
-
-            $home = $e['strHomeTeam'] ?? null;
-            $away = $e['strAwayTeam'] ?? null;
-            $hs   = $e['intHomeScore'] ?? null;
-            $as   = $e['intAwayScore'] ?? null;
-
-            foreach ([$home, $away] as $t) {
-                if (!$t) continue;
-                $groups[$groupKey][$t] ??= [
-                    'team' => $t, 'mp' => 0, 'w' => 0, 'd' => 0, 'l' => 0,
-                    'gf' => 0, 'ga' => 0, 'gd' => 0, 'pts' => 0, 'badge' => null,
+        $out = [];
+        foreach ($rounds as $key => $title) {
+            $matches = [];
+            foreach ($bracket[$key] ?? [] as $m) {
+                $live = $byMid[$m['id']] ?? null;
+                $matches[] = [
+                    'id'         => $m['id'],
+                    'kickoff'    => $m['date'],
+                    'home_label' => $m['home'],   // FIFA slot code (1E, W74, …)
+                    'away_label' => $m['away'],
+                    'home_team'  => $live['strHomeTeam']  ?? null,
+                    'away_team'  => $live['strAwayTeam']  ?? null,
+                    'home_iso'   => $live ? WorldCupDraw::isoFor((string)($live['strHomeTeam'] ?? '')) : null,
+                    'away_iso'   => $live ? WorldCupDraw::isoFor((string)($live['strAwayTeam'] ?? '')) : null,
+                    'home_score' => $this->intOrNull($live['intHomeScore'] ?? null),
+                    'away_score' => $this->intOrNull($live['intAwayScore'] ?? null),
+                    'venue'      => $live['strVenue']     ?? null,
+                    'status'     => $live['strStatus']    ?? null,
                 ];
             }
-            if ($home && !empty($e['strHomeTeamBadge'])) $groups[$groupKey][$home]['badge'] = $e['strHomeTeamBadge'];
-            if ($away && !empty($e['strAwayTeamBadge'])) $groups[$groupKey][$away]['badge'] = $e['strAwayTeamBadge'];
-
-            if ($home && $away && $hs !== null && $as !== null && $hs !== '' && $as !== '') {
-                $hs = (int)$hs; $as = (int)$as;
-                $groups[$groupKey][$home]['mp']++;
-                $groups[$groupKey][$away]['mp']++;
-                $groups[$groupKey][$home]['gf'] += $hs;
-                $groups[$groupKey][$home]['ga'] += $as;
-                $groups[$groupKey][$away]['gf'] += $as;
-                $groups[$groupKey][$away]['ga'] += $hs;
-                if     ($hs > $as) { $groups[$groupKey][$home]['w']++; $groups[$groupKey][$home]['pts'] += 3; $groups[$groupKey][$away]['l']++; }
-                elseif ($hs < $as) { $groups[$groupKey][$away]['w']++; $groups[$groupKey][$away]['pts'] += 3; $groups[$groupKey][$home]['l']++; }
-                else               { $groups[$groupKey][$home]['d']++; $groups[$groupKey][$away]['d']++;
-                                     $groups[$groupKey][$home]['pts']++; $groups[$groupKey][$away]['pts']++; }
-            }
-        }
-
-        $out = [];
-        ksort($groups);
-        foreach ($groups as $k => $teams) {
-            foreach ($teams as &$t) { $t['gd'] = $t['gf'] - $t['ga']; }
-            usort($teams, fn($a, $b) => [$b['pts'], $b['gd'], $b['gf']] <=> [$a['pts'], $a['gd'], $a['gf']]);
-            $out[] = ['name' => "Group $k", 'table' => array_values($teams)];
+            $out[] = ['key' => $key, 'title' => $title, 'matches' => $matches];
         }
         return $out;
     }
 
-    /**
-     * Fallback view of the group stage: bucket every non-knockout event by matchday
-     * (TheSportsDB's `intRound`). Useful before group letters are populated.
-     */
-    private function buildMatchdays(array $events): array
-    {
-        $buckets = [];
-        foreach ($events as $e) {
-            if ($this->classifyRound($e) !== null) continue; // skip knockouts
-            $md = (int)($e['intRound'] ?? 0);
-            if ($md < 1 || $md > 50) continue; // ignore unknown
-            $buckets[$md] ??= [];
-            $buckets[$md][] = $this->shapeMatch($e);
-        }
-        ksort($buckets);
-        $out = [];
-        foreach ($buckets as $md => $matches) {
-            usort($matches, fn($a, $b) => strcmp($a['kickoff'] ?? '', $b['kickoff'] ?? ''));
-            $out[] = ['name' => "Matchday $md", 'matches' => $matches];
-        }
-        return $out;
-    }
-
-    private function classifyRound(array $e): ?string
-    {
-        $name = strtolower((string)($e['strRound'] ?? ''));
-        $int  = (int)($e['intRound'] ?? 0);
-
-        if ($int === 125 || str_contains($name, 'final') && !str_contains($name, 'semi') && !str_contains($name, 'quarter') && !str_contains($name, 'third')) return 'final';
-        if ($int === 150 || str_contains($name, 'semi'))                    return 'sf';
-        if ($int === 200 || str_contains($name, 'quarter'))                 return 'qf';
-        if ($int === 250 || str_contains($name, 'round of 16'))             return 'r16';
-        if ($int === 350 || str_contains($name, 'round of 32'))             return 'r32';
-        if (str_contains($name, 'third') || str_contains($name, '3rd'))     return 'third';
-        return null; // group stage handled separately
-    }
+    // ---------- Shared helpers ----------
 
     private function shapeMatch(array $e): array
     {
@@ -167,8 +217,8 @@ class WorldCupController extends Controller
             'id'         => $e['idEvent'] ?? null,
             'home'       => $e['strHomeTeam'] ?? 'TBD',
             'away'       => $e['strAwayTeam'] ?? 'TBD',
-            'home_badge' => $e['strHomeTeamBadge'] ?? null,
-            'away_badge' => $e['strAwayTeamBadge'] ?? null,
+            'home_iso'   => WorldCupDraw::isoFor((string)($e['strHomeTeam'] ?? '')),
+            'away_iso'   => WorldCupDraw::isoFor((string)($e['strAwayTeam'] ?? '')),
             'home_score' => $this->intOrNull($e['intHomeScore'] ?? null),
             'away_score' => $this->intOrNull($e['intAwayScore'] ?? null),
             'kickoff'    => trim(($e['dateEvent'] ?? '') . ' ' . ($e['strTime'] ?? '')),
@@ -181,5 +231,14 @@ class WorldCupController extends Controller
     {
         if ($v === null || $v === '') return null;
         return (int)$v;
+    }
+
+    private function normalize(string $s): string
+    {
+        $s = mb_strtolower(trim($s));
+        if (function_exists('iconv')) {
+            $s = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s) ?: $s;
+        }
+        return $s;
     }
 }
