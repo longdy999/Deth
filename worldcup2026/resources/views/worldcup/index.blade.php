@@ -9,7 +9,6 @@
         <link rel="icon" href="{{ $league['strBadge'] }}" type="image/png">
     @endif
     <link rel="stylesheet" href="{{ asset('css/worldcup.css') }}">
-    {{-- Apply theme as early as possible to avoid flash --}}
     <script>
         (function () {
             try {
@@ -26,6 +25,9 @@
     <div class="topbar__inner">
         <a class="brand" href="/" aria-label="FIFA World Cup 26 home">
             <span class="brand__mark" aria-hidden="true">
+                {{-- The API badge is placed on top of a FIFA-blue gradient tile,
+                     so a white/transparent logo always has contrast in BOTH
+                     light and dark modes. --}}
                 @if(!empty($league['strBadge']))
                     <img src="{{ $league['strBadge'] }}"
                          alt="FIFA World Cup"
@@ -33,7 +35,6 @@
                          loading="eager"
                          onerror="this.style.display='none';this.nextElementSibling.style.display='block'">
                 @endif
-                {{-- Inline SVG fallback for the FIFA World Cup mark --}}
                 <svg class="brand__logo-fallback" viewBox="0 0 64 64" width="44" height="44"
                      focusable="false" aria-hidden="true"
                      style="{{ !empty($league['strBadge']) ? 'display:none' : '' }}">
@@ -227,6 +228,46 @@
             </div>
         </header>
 
+        {{-- ====== CHAMPION DISPLAY ====== --}}
+        <div class="champion" id="champion-card">
+            <div class="champion__shine" aria-hidden="true"></div>
+            <div class="champion__inner">
+                <div class="champion__trophy" aria-hidden="true">
+                    <svg viewBox="0 0 64 64" width="56" height="56" focusable="false">
+                        <defs>
+                            <linearGradient id="trophy-g" x1="0" x2="0" y1="0" y2="1">
+                                <stop offset="0" stop-color="#ffe27a"/>
+                                <stop offset=".5" stop-color="#e3b033"/>
+                                <stop offset="1" stop-color="#7a4f12"/>
+                            </linearGradient>
+                        </defs>
+                        <path fill="url(#trophy-g)"
+                              d="M18 8h28a2 2 0 0 1 2 2v6h5a4 4 0 0 1 4 4v6a9 9 0 0 1-9 9h-2.7A16 16 0 0 1 35 49.6V54h6a2 2 0 0 1 2 2v2H21v-2a2 2 0 0 1 2-2h6v-4.4A16 16 0 0 1 16.7 35H14a9 9 0 0 1-9-9v-6a4 4 0 0 1 4-4h5v-6a2 2 0 0 1 2-2zm30 12v12h.5a5 5 0 0 0 5-5v-5a2 2 0 0 0-2-2H48zm-32 0H10a2 2 0 0 0-2 2v5a5 5 0 0 0 5 5h3V20z"/>
+                    </svg>
+                </div>
+                <div class="champion__body">
+                    <div class="champion__label">FIFA World Cup 2026 Champion</div>
+                    <div class="champion__team" id="champion-team">
+                        <span class="champion__flag" data-flag>
+                            <svg viewBox="0 0 24 18" width="36" height="27" aria-hidden="true">
+                                <rect width="24" height="18" rx="1.5" fill="currentColor" opacity=".12"/>
+                            </svg>
+                        </span>
+                        <span class="champion__name" data-name>To Be Decided</span>
+                    </div>
+                    <div class="champion__final-info">
+                        Final · 19 Jul 2026 · MetLife Stadium, New York/New Jersey
+                    </div>
+                </div>
+                @if(!empty($league['strBadge']))
+                    <div class="champion__logo" aria-hidden="true">
+                        <img src="{{ $league['strBadge'] }}" alt="">
+                    </div>
+                @endif
+            </div>
+        </div>
+
+        {{-- Desktop bracket --}}
         <div class="bracket-desktop">
             <div class="bracket-scroll">
                 <div class="bracket-inner">
@@ -291,6 +332,7 @@
             </div>
         </div>
 
+        {{-- Mobile bracket --}}
         <div class="bracket-mobile">
             @php($mobileRounds = [
                 ['title' => 'Round of 32',    'matches' => $bracket['r32']],

@@ -1,18 +1,19 @@
 /* ===========================================================================
  * FIFA World Cup 26 — Match Center
  *
- * Three responsibilities:
- *   1. Theme toggle — light/dark, persisted in localStorage.
+ * Responsibilities:
+ *   1. Theme toggle (light/dark, persisted in localStorage).
  *   2. Full-screen bracket — Fullscreen API + CSS-only fallback.
- *   3. Live overlay — polls /api/snapshot every 10 s and patches the
- *      pre-rendered scaffold (hero, up-next, recent, standings, bracket).
+ *   3. Live overlay — polls /api/snapshot every 10 s and patches:
+ *      hero, up-next, recent, standings, bracket cells, and the
+ *      champion banner once the final has a winner.
  * =========================================================================== */
 (() => {
     const POLL_MS = 10_000;
     const $  = (sel, root = document) => root.querySelector(sel);
     const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-    /* =========================== Theme toggle ============================== */
+    /* ============== Theme toggle ============== */
     const themeToggle = $('#theme-toggle');
     const setTheme = (mode) => {
         document.documentElement.dataset.theme = mode;
@@ -31,7 +32,7 @@
     new MutationObserver(syncColorScheme).observe(document.documentElement,
         { attributes: true, attributeFilter: ['data-theme'] });
 
-    /* =========================== Full-screen bracket ======================= */
+    /* ============== Full-screen bracket ============== */
     const bracketPanel = $('#bracket');
     const fsEnter = $('#fs-enter');
     const fsExit  = $('#fs-exit');
@@ -41,22 +42,16 @@
         || document.webkitFullscreenElement === bracketPanel;
 
     const exitFullscreen = () => {
-        if (document.exitFullscreen) {
-            document.exitFullscreen().catch(() => {});
-        } else if (document.webkitExitFullscreen) {
-            document.webkitExitFullscreen();
-        }
+        if (document.exitFullscreen)        document.exitFullscreen().catch(() => {});
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
         if (bracketPanel) bracketPanel.classList.remove('is-fullscreen-fallback');
         document.body.style.overflow = '';
     };
-
     const enterFullscreen = () => {
         if (!bracketPanel) return;
-        const req = bracketPanel.requestFullscreen
-                 || bracketPanel.webkitRequestFullscreen;
+        const req = bracketPanel.requestFullscreen || bracketPanel.webkitRequestFullscreen;
         if (req) {
             req.call(bracketPanel).catch(() => {
-                // Native API rejected — fall back to CSS-only mode.
                 bracketPanel.classList.add('is-fullscreen-fallback');
                 document.body.style.overflow = 'hidden';
             });
@@ -65,22 +60,19 @@
             document.body.style.overflow = 'hidden';
         }
     };
-
     if (fsEnter) fsEnter.addEventListener('click', enterFullscreen);
-    if (fsExit)  fsExit.addEventListener('click', exitFullscreen);
-
-    // Sync body scroll lock with native fullscreen state
+    if (fsExit)  fsExit.addEventListener('click',  exitFullscreen);
     document.addEventListener('fullscreenchange', () => {
         if (!isNativeFullscreen()) document.body.style.overflow = '';
     });
-    // Escape key exits the CSS-only fallback (native FS handles its own)
     document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && bracketPanel && bracketPanel.classList.contains('is-fullscreen-fallback')) {
+        if (e.key === 'Escape' && bracketPanel
+            && bracketPanel.classList.contains('is-fullscreen-fallback')) {
             exitFullscreen();
         }
     });
 
-    /* =========================== Status & helpers ========================= */
+    /* ============== Helpers ============== */
     const dot         = $('#status-dot');
     const statusText  = $('#status-text');
     const lastUpdated = $('#last-updated');
@@ -123,7 +115,7 @@
     const isLive     = (m) => (m && m.status) === 'Live';
     const isFinished = (m) => (m && m.status) === 'Finished';
 
-    /* =========================== Hero ===================================== */
+    /* ============== Hero ============== */
     const renderHero = (m) => {
         const card = $('#featured-card');
         if (!card) return;
@@ -162,7 +154,7 @@
         `;
     };
 
-    /* =========================== Match cards ============================== */
+    /* ============== Match cards (Up Next / Recent) ============== */
     const matchCard = (m) => {
         const live     = isLive(m);
         const finished = isFinished(m);
@@ -220,15 +212,13 @@
         }
         grid.innerHTML = items.slice(0, Math.max(minCount, 3)).map(matchCard).join('');
     };
-
     const setCount = (sel, items, label) => {
-        const el = $(sel);
-        if (!el) return;
+        const el = $(sel); if (!el) return;
         const n = (items && items.length) || 0;
         el.textContent = n ? `${n} ${label}` : '';
     };
 
-    /* =========================== Standings ================================ */
+    /* ============== Standings ============== */
     const updateStandings = (groups) => {
         if (!Array.isArray(groups)) return;
         for (const g of groups) {
@@ -248,14 +238,8 @@
                     if (!el) return;
                     el.textContent = (k === 'gd' && v > 0) ? `+${v}` : String(v ?? 0);
                 };
-                setStat('mp',  t.mp);
-                setStat('w',   t.w);
-                setStat('d',   t.d);
-                setStat('l',   t.l);
-                setStat('gf',  t.gf);
-                setStat('ga',  t.ga);
-                setStat('gd',  t.gd);
-                setStat('pts', t.pts);
+                setStat('mp',  t.mp); setStat('w',  t.w); setStat('d', t.d); setStat('l', t.l);
+                setStat('gf',  t.gf); setStat('ga', t.ga); setStat('gd', t.gd); setStat('pts', t.pts);
 
                 const form = row.querySelector('[data-form]');
                 if (form) {
@@ -268,18 +252,34 @@
                     }
                     form.innerHTML = cells.join('');
                 }
-                tbody.appendChild(row); // re-order to match sorted position
+                tbody.appendChild(row);
             });
         }
     };
 
-    /* =========================== Bracket overlay ========================== */
+    /* ============== Bracket overlay ============== */
+    // Determine the right status chip class for a match.
+    const statusFor = (m) => {
+        const hs = m.home_score, as = m.away_score;
+        const hasScore = hs !== null && hs !== undefined && as !== null && as !== undefined;
+        const rs = (m.status || '').toLowerCase();
+        if (['live', 'in play', '1h', '2h', 'ht'].includes(rs)) return 'live';
+        if (hasScore) return 'finished';
+        return 'upcoming';
+    };
+    const statusLabel = (s) => s === 'live' ? 'Live'
+                              : s === 'finished' ? 'Finished'
+                              : 'Upcoming';
+
     const updateBracket = (rounds) => {
         if (!Array.isArray(rounds)) return;
         for (const r of rounds) {
             for (const m of (r.matches || [])) {
                 // Each match-id renders twice (desktop tree + mobile strip)
                 const cells = document.querySelectorAll(`.brk[data-mid="${m.id}"]`);
+                const cls   = statusFor(m);
+                const lbl   = statusLabel(cls);
+
                 cells.forEach((cell) => {
                     const sides = {
                         home: cell.querySelector('.brk__team[data-side="home"]'),
@@ -297,7 +297,11 @@
                             nameEl.classList.add('is-placeholder');
                         }
                         flagEl.innerHTML = iso
-                            ? `<img src="${flagUrl(iso, 'w40')}" alt="">` : '';
+                            ? `<img src="${flagUrl(iso, 'w40')}" alt="">`
+                            : `<svg viewBox="0 0 24 18" width="22" height="16" aria-hidden="true">
+                                 <rect width="24" height="18" rx="1" fill="currentColor" opacity=".08"/>
+                                 <path d="M3 4h18v3H3zM3 11h18v3H3z" fill="currentColor" opacity=".18"/>
+                               </svg>`;
                         scoreEl.textContent =
                             (score === null || score === undefined) ? '–' : String(score);
                     };
@@ -307,12 +311,50 @@
                     const hs = m.home_score, as = m.away_score;
                     sides.home.classList.toggle('is-winner', hs !== null && as !== null && hs > as);
                     sides.away.classList.toggle('is-winner', hs !== null && as !== null && as > hs);
+
+                    // Update status chip
+                    const statusEl = cell.querySelector('[data-status]');
+                    if (statusEl) {
+                        statusEl.textContent = lbl;
+                        statusEl.classList.remove('is-live', 'is-upcoming', 'is-finished');
+                        statusEl.classList.add(`is-${cls}`);
+                    }
                 });
             }
         }
     };
 
-    /* =========================== Polling ================================== */
+    /* ============== Champion banner ============== */
+    const updateChampion = (rounds) => {
+        if (!Array.isArray(rounds)) return;
+        const finalRound = rounds.find(r => r.key === 'final' || /final/i.test(r.title));
+        const finalMatch = finalRound && finalRound.matches && finalRound.matches[0];
+        if (!finalMatch) return;
+
+        const card    = $('#champion-card');
+        if (!card) return;
+        const flagEl  = card.querySelector('[data-flag]');
+        const nameEl  = card.querySelector('[data-name]');
+
+        const hs = finalMatch.home_score, as = finalMatch.away_score;
+        const decided = hs !== null && hs !== undefined && as !== null && as !== undefined && hs !== as;
+        if (!decided) {
+            if (nameEl) nameEl.textContent = 'To Be Decided';
+            if (flagEl) flagEl.innerHTML =
+                `<svg viewBox="0 0 24 18" width="36" height="27" aria-hidden="true">
+                   <rect width="24" height="18" rx="1.5" fill="currentColor" opacity=".12"/>
+                 </svg>`;
+            return;
+        }
+        const winnerName = hs > as ? finalMatch.home_team : finalMatch.away_team;
+        const winnerIso  = hs > as ? finalMatch.home_iso  : finalMatch.away_iso;
+        if (nameEl && winnerName) nameEl.textContent = winnerName;
+        if (flagEl && winnerIso) {
+            flagEl.innerHTML = `<img src="${flagUrl(winnerIso, 'w160')}" alt="">`;
+        }
+    };
+
+    /* ============== Polling ============== */
     let inFlight = false;
     const poll = async () => {
         if (inFlight) return;
@@ -330,10 +372,10 @@
             setCount('#recent-count',    data.recent,   'recent matches');
             updateStandings(data.groups);
             updateBracket(data.bracket);
+            updateChampion(data.bracket);
 
             setStatus('ok', 'live');
-            if (lastUpdated)
-                lastUpdated.textContent = 'Updated ' + new Date().toLocaleTimeString();
+            if (lastUpdated) lastUpdated.textContent = 'Updated ' + new Date().toLocaleTimeString();
         } catch (e) {
             setStatus('err', 'connection issue');
             if (lastUpdated) lastUpdated.textContent = 'Retrying…';

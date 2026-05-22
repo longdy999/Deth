@@ -2,12 +2,11 @@
  * FIFA World Cup 2026 — Match Center
  *
  * - Light/dark theme via [data-theme] on <html> (persisted in localStorage).
- * - Hard horizontal-overflow guard on html/body.
- * - Standings: HTML <table> per group (perfect column alignment).
- * - Bracket: dual layout (FIFA-style 9-col tree on desktop, vertical
- *   round-by-round strips on mobile). Bracket centers when it fits and
- *   scrolls horizontally when wider than the panel. Full-screen mode
- *   available via the Fullscreen API (with a CSS-only fallback).
+ * - Brand mark uses a FIFA-blue gradient tile in BOTH themes so the badge
+ *   image always has contrast (the API badge is white/transparent).
+ * - Standings: HTML <table> per group.
+ * - Bracket: dual layout with safe-center + horizontal scroll, full-screen
+ *   button (Fullscreen API + CSS-only fallback), champion banner above.
  * =========================================================================== */
 
 /* ---------- Theme palettes ------------------------------------------------- */
@@ -31,8 +30,18 @@
     --l:          #dc2626;
     --live:       #dc2626;
 
+    --gold-1:     #fde68a;
+    --gold-2:     #d4a64a;
+    --gold-3:     #7a5320;
+
+    /* Brand tile gradient — same in light & dark, so the badge is always
+       readable regardless of underlying theme. FIFA-style navy → red. */
+    --brand-grad: linear-gradient(135deg, #0a1d4f 0%, #1f3a8a 55%, #c4233b 100%);
+
     --hero-grad:  linear-gradient(135deg, #1a2c6b 0%, #2b4ab8 45%, #d62739 100%);
     --hero-text:  #ffffff;
+
+    --champ-grad: linear-gradient(135deg, #0c1a47 0%, #1a3380 50%, #b51a31 100%);
 
     --shadow-sm:  0 1px 2px rgba(15, 23, 42, .06);
     --shadow-md:  0 6px 18px rgba(15, 23, 42, .08);
@@ -61,6 +70,7 @@
     --live:       #f87171;
 
     --hero-grad:  linear-gradient(135deg, #0c1430 0%, #1d3186 45%, #c41a2c 100%);
+    --champ-grad: linear-gradient(135deg, #0c1a47 0%, #1a3380 50%, #b51a31 100%);
 
     --shadow-sm:  0 1px 2px rgba(0, 0, 0, .35);
     --shadow-md:  0 6px 22px rgba(0, 0, 0, .35);
@@ -107,20 +117,36 @@ button { font: inherit; cursor: pointer; border: 0; background: none; color: inh
 }
 .brand { display: flex; align-items: center; gap: 14px; color: inherit; min-width: 0; }
 .brand:hover { text-decoration: none; }
+
+/*
+ * Brand mark — colored tile so a white/transparent logo (TheSportsDB's
+ * default) is always visible.  Uses the same gradient in BOTH themes.
+ */
 .brand__mark {
+    position: relative;
     display: inline-flex; align-items: center; justify-content: center;
-    width: 52px; height: 52px;
+    width: 54px; height: 54px;
     border-radius: 12px;
-    background: var(--accent-2);
-    border: 1px solid var(--line);
+    background: var(--brand-grad);
     flex: none;
     overflow: hidden;
-    padding: 4px;
+    padding: 6px;
+    box-shadow: 0 2px 6px rgba(15, 23, 42, .15), inset 0 0 0 1px rgba(255,255,255,.08);
+}
+.brand__mark::after {
+    /* subtle gloss */
+    content: ""; position: absolute; inset: 0;
+    background: radial-gradient(120% 60% at 30% 0%, rgba(255,255,255,.18), transparent 60%);
+    pointer-events: none;
 }
 .brand__logo-img {
     width: 100%; height: 100%; object-fit: contain;
+    /* Slight drop-shadow so a colored logo also stands out on the gradient */
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,.3));
+    position: relative; z-index: 1;
 }
-.brand__logo-fallback { width: 100%; height: 100%; }
+.brand__logo-fallback { width: 100%; height: 100%; position: relative; z-index: 1; }
+
 .brand__text { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
 .brand__text strong {
     font-size: 16px; font-weight: 800; letter-spacing: .2px;
@@ -182,7 +208,7 @@ button { font: inherit; cursor: pointer; border: 0; background: none; color: inh
     .status #status-text { display: none; }
 }
 @media (max-width: 480px) {
-    .brand__mark { width: 44px; height: 44px; }
+    .brand__mark { width: 46px; height: 46px; padding: 5px; }
     .brand__text strong { font-size: 14px; }
     .icon-btn { width: 36px; height: 36px; }
 }
@@ -214,7 +240,7 @@ main > * { min-width: 0; }
     gap: 12px; flex-wrap: wrap;
     margin-bottom: 16px;
 }
-.panel__head--bracket { align-items: center; }
+.panel__head--bracket { align-items: center; margin-bottom: 14px; }
 .panel__title { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -.01em; }
 .panel__sub   { font-size: 12.5px; color: var(--muted); }
 .panel__actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -232,7 +258,6 @@ main > * { min-width: 0; }
 .legend strong { color: var(--text); font-weight: 600; }
 .legend .dot-form { vertical-align: middle; margin: 0 2px 0 6px; }
 
-/* Buttons (full-screen, etc.) */
 .btn-fs {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 8px 14px; border-radius: 999px;
@@ -536,11 +561,90 @@ main > * { min-width: 0; }
 .dot-form.is-l::before { content: "L"; }
 
 /* ===========================================================================
+ * CHAMPION BANNER  (sits at the top of the bracket panel)
+ * =========================================================================== */
+.champion {
+    position: relative;
+    border-radius: var(--radius);
+    background: var(--champ-grad);
+    color: #fff;
+    overflow: hidden;
+    margin-bottom: 18px;
+    box-shadow: var(--shadow-md);
+}
+.champion__shine {
+    position: absolute; inset: 0;
+    background:
+        radial-gradient(700px 200px at 90% -10%, rgba(255,255,255,.18), transparent 60%),
+        radial-gradient(500px 250px at 10% 110%, rgba(255, 226, 122, .15), transparent 60%);
+    pointer-events: none;
+}
+.champion__inner {
+    position: relative; z-index: 1;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 22px;
+    padding: 22px 26px;
+}
+.champion__trophy {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 80px; height: 80px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 25%, rgba(255,255,255,.3), rgba(255,255,255,.05) 70%);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.25), 0 6px 18px rgba(0,0,0,.25);
+    flex: none;
+}
+.champion__body { min-width: 0; }
+.champion__label {
+    font-size: 11.5px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: .14em;
+    opacity: .9;
+}
+.champion__team {
+    display: flex; align-items: center; gap: 14px;
+    margin-top: 8px;
+}
+.champion__flag {
+    width: 56px; aspect-ratio: 4/3; flex: none;
+    border-radius: 4px; overflow: hidden;
+    background: rgba(255,255,255,.12);
+    box-shadow: 0 0 0 1px rgba(255,255,255,.25);
+    color: #fff;
+}
+.champion__flag img { width: 100%; height: 100%; object-fit: cover; }
+.champion__name {
+    font-size: 28px; font-weight: 900; letter-spacing: -.02em;
+    line-height: 1;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.champion__final-info {
+    margin-top: 10px;
+    font-size: 12.5px; opacity: .85;
+}
+.champion__logo {
+    flex: none;
+    width: 64px; height: 64px; border-radius: 12px;
+    background: rgba(255,255,255,.1);
+    border: 1px solid rgba(255,255,255,.25);
+    padding: 6px;
+}
+.champion__logo img { width: 100%; height: 100%; object-fit: contain; }
+
+@media (max-width: 720px) {
+    .champion__inner {
+        grid-template-columns: auto 1fr;
+        gap: 16px; padding: 16px 18px;
+    }
+    .champion__logo { display: none; }
+    .champion__trophy { width: 56px; height: 56px; }
+    .champion__trophy svg { width: 38px; height: 38px; }
+    .champion__name { font-size: 22px; }
+    .champion__flag { width: 44px; }
+}
+
+/* ===========================================================================
  * BRACKET — desktop (>=1024 px)
- * The bracket is always centered horizontally:
- *   - When narrower than the panel: flex centers it.
- *   - When wider: `safe center` falls back to flex-start so the start of
- *     the bracket stays reachable via horizontal scroll.
  * =========================================================================== */
 .bracket-desktop { display: block; }
 .bracket-mobile  { display: none; }
@@ -562,13 +666,13 @@ main > * { min-width: 0; }
 .bracket-scroll::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
 
 .bracket-inner {
-    flex: 0 0 auto;        /* keep natural width inside the flex scroller */
-    margin: 0 auto;        /* centers when bracket-scroll has remaining space */
+    flex: 0 0 auto;
+    margin: 0 auto;
     min-width: max-content;
 }
 
 .bracket, .bracket-headers {
-    --c1: 180px; --c2: 180px; --c3: 180px; --c4: 180px; --c5: 240px;
+    --c1: 192px; --c2: 192px; --c3: 192px; --c4: 192px; --c5: 240px;
 }
 .bracket-headers {
     display: grid;
@@ -590,7 +694,7 @@ main > * { min-width: 0; }
     display: flex; flex-direction: column; justify-content: space-around;
     padding: 6px 8px;
     border-right: 1px solid var(--line-2);
-    gap: 6px;
+    gap: 8px;
 }
 .col:last-child { border-right: 0; }
 .col--final {
@@ -628,7 +732,7 @@ main > * { min-width: 0; }
 }
 .round-block__count { font-size: 11px; color: var(--muted); }
 .round-block__strip {
-    display: flex; gap: 10px; padding: 14px;
+    display: flex; gap: 12px; padding: 14px;
     overflow-x: auto; -webkit-overflow-scrolling: touch;
     scroll-snap-type: x proximity;
 }
@@ -639,67 +743,102 @@ main > * { min-width: 0; }
 }
 
 /* ===========================================================================
- * Bracket match cell  (.brk)
+ * Bracket match cell  (.brk) — improved: bigger flags, status footer,
+ * winner highlight, larger date typography.
  * =========================================================================== */
 .brk {
     background: var(--panel);
     border: 1px solid var(--line);
-    border-radius: 6px;
+    border-radius: 8px;
     padding: 9px 11px;
     margin: 0;
-    display: grid; gap: 6px;
+    display: grid; gap: 7px;
     box-shadow: var(--shadow-sm);
     min-width: 0;
+    transition: border-color .15s, box-shadow .15s;
 }
+.brk:hover { border-color: var(--accent-3); }
 .brk__hd {
     display: flex; justify-content: space-between; align-items: center;
     font-size: 10.5px; color: var(--muted);
-    border-bottom: 1px dashed var(--line-2); padding-bottom: 4px;
+    border-bottom: 1px dashed var(--line-2); padding-bottom: 5px;
 }
-.brk__date { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.brk__id   { font-weight: 800; color: var(--accent); }
-.brk__teams { display: grid; gap: 4px; }
+.brk__date {
+    display: inline-flex; align-items: baseline; gap: 4px;
+    font-variant-numeric: tabular-nums;
+}
+.brk__date-d { color: var(--text); font-weight: 700; }
+.brk__date-t { color: var(--muted); }
+.brk__id   { font-weight: 800; color: var(--accent); font-size: 10.5px; }
+.brk__teams { display: grid; gap: 5px; }
 .brk__team {
-    display: grid; grid-template-columns: 22px 1fr auto;
-    align-items: center; gap: 8px;
-    font-size: 13px; line-height: 1.2; min-width: 0;
+    display: grid;
+    grid-template-columns: 26px 1fr auto;
+    align-items: center; gap: 9px;
+    padding: 2px 0;
+    font-size: 13.5px; line-height: 1.2; min-width: 0;
 }
-.brk__flag { width: 22px; height: 16px; }
+.brk__flag {
+    width: 26px; height: 18px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 2px;
+    color: var(--muted);                 /* used by placeholder SVG fill */
+    overflow: hidden;
+}
+.brk__flag svg { width: 100%; height: 100%; }
 .brk__flag img {
-    width: 22px; height: 16px; object-fit: cover;
-    border-radius: 1px;
-    box-shadow: 0 0 0 1px rgba(0,0,0,.08);
+    width: 100%; height: 100%; object-fit: cover;
+    border-radius: 2px;
+    box-shadow: 0 0 0 1px rgba(0,0,0,.12);
 }
 .brk__name {
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    font-weight: 600; min-width: 0; color: var(--text);
+    font-weight: 700; min-width: 0; color: var(--text);
 }
 .brk__name.is-placeholder {
-    color: var(--muted); font-weight: 400;
+    color: var(--muted); font-weight: 500;
     font-variant-numeric: tabular-nums;
 }
 .brk__score {
     font-weight: 800; font-variant-numeric: tabular-nums;
-    color: var(--text); min-width: 14px; text-align: right;
+    color: var(--text); min-width: 16px; text-align: right;
+    font-size: 14px;
 }
+.brk__team.is-winner { background: var(--accent-2); border-radius: 4px; }
+.brk__team.is-winner .brk__name  { color: var(--accent); }
 .brk__team.is-winner .brk__score { color: var(--w); }
+
+.brk__ft {
+    display: flex; justify-content: flex-end;
+    border-top: 1px dashed var(--line-2);
+    padding-top: 5px;
+    margin-top: 1px;
+}
+.brk__status {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 1px 7px; border-radius: 999px;
+    font-size: 9.5px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: .08em;
+    background: var(--panel-2);
+    color: var(--muted);
+    border: 1px solid var(--line);
+}
+.brk__status.is-live    { background: var(--live); color: #fff; border-color: var(--live);
+                           animation: pulse 1.6s infinite; }
+.brk__status.is-upcoming { background: var(--accent-2); color: var(--accent); border-color: var(--accent-3); }
+.brk__status.is-finished { background: var(--panel-2); color: var(--text-2); }
 
 .brk--big {
     border: 2px solid var(--accent);
     box-shadow: 0 8px 24px rgba(31, 58, 138, .18);
     padding: 12px 14px;
+    background: var(--panel);
 }
 .brk--big .brk__id { font-size: 12px; }
-.brk--big .brk__team { font-size: 14px; }
+.brk--big .brk__team { font-size: 14.5px; }
 
 /* ===========================================================================
  * FULL-SCREEN BRACKET MODE
- *
- * Two strategies:
- *   1) Native Fullscreen API: :fullscreen pseudo-class styles the panel.
- *   2) Fallback: .is-fullscreen-fallback class fixes the panel to the
- *      viewport in case requestFullscreen() is rejected (some mobile
- *      browsers, in-app browsers, etc.).
  * =========================================================================== */
 .panel--bracket:fullscreen,
 .panel--bracket.is-fullscreen-fallback {
@@ -718,9 +857,9 @@ main > * { min-width: 0; }
     box-shadow: none;
 }
 .panel--bracket:fullscreen .panel__head,
-.panel--bracket.is-fullscreen-fallback .panel__head {
-    flex: none;
-}
+.panel--bracket.is-fullscreen-fallback .panel__head { flex: none; }
+.panel--bracket:fullscreen .champion,
+.panel--bracket.is-fullscreen-fallback .champion { flex: none; }
 .panel--bracket:fullscreen .bracket-desktop,
 .panel--bracket:fullscreen .bracket-mobile,
 .panel--bracket.is-fullscreen-fallback .bracket-desktop,
@@ -729,24 +868,33 @@ main > * { min-width: 0; }
     min-height: 0;
     overflow: auto;
 }
-/* In fullscreen, hide the "enter" button and reveal "exit" */
 .panel--bracket:fullscreen #fs-enter,
 .panel--bracket.is-fullscreen-fallback #fs-enter { display: none; }
 .panel--bracket:fullscreen #fs-exit,
 .panel--bracket.is-fullscreen-fallback #fs-exit { display: inline-flex; }
 
-/* In fullscreen, give the bracket more room on tablet/desktop */
+/* In fullscreen, give the bracket more room */
 .panel--bracket:fullscreen .bracket,
 .panel--bracket:fullscreen .bracket-headers,
 .panel--bracket.is-fullscreen-fallback .bracket,
 .panel--bracket.is-fullscreen-fallback .bracket-headers {
-    --c1: 200px; --c2: 200px; --c3: 200px; --c4: 200px; --c5: 260px;
+    --c1: 210px; --c2: 210px; --c3: 210px; --c4: 210px; --c5: 270px;
 }
 
-/* Fullscreen on mobile uses the round-blocks layout, give it breathing room */
 @media (max-width: 1023px) {
     .panel--bracket:fullscreen,
     .panel--bracket.is-fullscreen-fallback { padding: 12px; }
+}
+
+/* ===========================================================================
+ * Landscape orientation tweaks (tablet/phone landscape)
+ * =========================================================================== */
+@media (max-height: 600px) and (orientation: landscape) {
+    .topbar { position: static; }
+    .hero { padding: 18px 20px; min-height: auto; }
+    .hero__chip { margin-bottom: 12px; }
+    main { gap: 14px; padding: 14px 16px 24px; }
+    .panel { padding: 16px 18px; }
 }
 
 /* ---------- Footer --------------------------------------------------------- */
