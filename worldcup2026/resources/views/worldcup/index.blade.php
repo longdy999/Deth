@@ -3,18 +3,20 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>FIFA World Cup 2026 — Live Tracker</title>
+    <title>FIFA World Cup 2026 — Standings &amp; Bracket</title>
+    <link rel="preconnect" href="https://flagcdn.com" crossorigin>
     <link rel="stylesheet" href="{{ asset('css/worldcup.css') }}">
 </head>
 <body>
+
 <header class="topbar">
     <div class="brand">
         @if(!empty($league['strBadge']))
             <img src="{{ $league['strBadge'] }}" alt="" class="brand__logo">
         @endif
         <div>
-            <h1>FIFA World Cup 2026</h1>
-            <p class="brand__sub">Live tracker · powered by TheSportsDB</p>
+            <h1>FIFA World Cup 26</h1>
+            <p class="brand__sub">Canada · Mexico · USA · 11 June – 19 July 2026</p>
         </div>
     </div>
     <div class="status">
@@ -25,30 +27,162 @@
 </header>
 
 <main>
-    <section class="panel" id="live-panel">
-        <h2>Live &amp; Up Next</h2>
-        <div id="live-grid" class="match-grid"><div class="empty">Loading…</div></div>
+
+    {{-- ==================== Live banner ==================== --}}
+    <section class="panel panel--compact" id="live-panel" hidden>
+        <h2 class="panel__title">Live Now</h2>
+        <div id="live-grid" class="match-grid"></div>
     </section>
 
+    {{-- ==================== STANDINGS ==================== --}}
     <section class="panel">
-        <h2>Recent Results</h2>
-        <div id="recent-grid" class="match-grid"><div class="empty">Loading…</div></div>
+        <h2 class="panel__title">Standings</h2>
+
+        <div class="standings" id="standings">
+            @foreach($groups as $letter => $teams)
+                <article class="group" data-group="{{ $letter }}">
+                    <header class="group__head">
+                        <h3>Group {{ $letter }}</h3>
+                        <div class="group__cols">
+                            <span title="Played">P</span>
+                            <span title="Wins">W</span>
+                            <span title="Draws">D</span>
+                            <span title="Losses">L</span>
+                            <span title="Goals For">GF</span>
+                            <span title="Goals Against">GA</span>
+                            <span title="Goal Difference">GD</span>
+                            <span title="Points" class="pts">Pts</span>
+                            <span title="Form (last 5)" class="form">Form</span>
+                        </div>
+                    </header>
+
+                    <ol class="group__rows">
+                        @foreach($teams as $i => $t)
+                            <li class="row" data-team="{{ $t['team'] }}">
+                                <span class="rank">{{ $i + 1 }}</span>
+                                <span class="flag"><img src="https://flagcdn.com/w40/{{ $t['iso'] }}.png" alt="" loading="lazy"></span>
+                                <span class="team">{{ $t['team'] }}</span>
+                                <span class="stat" data-stat="mp">0</span>
+                                <span class="stat" data-stat="w">0</span>
+                                <span class="stat" data-stat="d">0</span>
+                                <span class="stat" data-stat="l">0</span>
+                                <span class="stat" data-stat="gf">0</span>
+                                <span class="stat" data-stat="ga">0</span>
+                                <span class="stat" data-stat="gd">0</span>
+                                <span class="stat pts" data-stat="pts">0</span>
+                                <span class="form" data-form>
+                                    <span class="dot-form">–</span><span class="dot-form">–</span><span class="dot-form">–</span><span class="dot-form">–</span><span class="dot-form">–</span>
+                                </span>
+                            </li>
+                        @endforeach
+                    </ol>
+                </article>
+            @endforeach
+        </div>
+
+        <p class="legend">
+            <strong>P</strong> = Matches Played &nbsp;
+            <strong>W</strong> = Wins &nbsp;
+            <strong>D</strong> = Draws &nbsp;
+            <strong>L</strong> = Losses &nbsp;
+            <strong>GF</strong> = Goals For &nbsp;
+            <strong>GA</strong> = Goals Against &nbsp;
+            <strong>GD</strong> = Goal Difference &nbsp;
+            <strong>Pts</strong> = Points
+            <br>
+            <strong>Form:</strong>
+            <span class="dot-form is-w" title="Win"></span> Win
+            <span class="dot-form is-d" title="Draw"></span> Draw
+            <span class="dot-form is-l" title="Loss"></span> Loss
+            <span class="dot-form" title="Not played">–</span> Not played
+        </p>
     </section>
 
+    {{-- ==================== KNOCKOUT BRACKET ==================== --}}
     <section class="panel">
-        <h2 id="groups-title">Group Stage</h2>
-        <div id="groups" class="groups"><div class="empty">Standings will appear once group matches are played.</div></div>
-    </section>
+        <h2 class="panel__title">Knockout bracket</h2>
 
-    <section class="panel">
-        <h2>Knockout Bracket</h2>
-        <div id="bracket" class="bracket"><div class="empty">Bracket will populate after the group stage.</div>
+        <div class="bracket-wrap">
+            <div class="bracket" id="bracket">
+                {{-- Left side: R32 → R16 → QF → SF --}}
+                <div class="col col--r32" data-round="r32-l">
+                    @foreach(array_slice($bracket['r32'], 0, 8) as $m)
+                        @include('worldcup.partials.match', ['m' => $m])
+                    @endforeach
+                </div>
+                <div class="col col--r16" data-round="r16-l">
+                    @foreach(array_slice($bracket['r16'], 0, 4) as $m)
+                        @include('worldcup.partials.match', ['m' => $m])
+                    @endforeach
+                </div>
+                <div class="col col--qf" data-round="qf-l">
+                    @foreach(array_slice($bracket['qf'], 0, 2) as $m)
+                        @include('worldcup.partials.match', ['m' => $m])
+                    @endforeach
+                </div>
+                <div class="col col--sf" data-round="sf-l">
+                    @include('worldcup.partials.match', ['m' => $bracket['sf'][0]])
+                </div>
+
+                {{-- Center: Final --}}
+                <div class="col col--final" data-round="final">
+                    <div class="final-stack">
+                        <div class="round-label">Final</div>
+                        @include('worldcup.partials.match', ['m' => $bracket['final'][0], 'big' => true])
+
+                        <div class="round-label round-label--small">Play-off for third place</div>
+                        @include('worldcup.partials.match', ['m' => $bracket['third'][0]])
+                    </div>
+                </div>
+
+                {{-- Right side: SF → QF → R16 → R32 --}}
+                <div class="col col--sf" data-round="sf-r">
+                    @include('worldcup.partials.match', ['m' => $bracket['sf'][1]])
+                </div>
+                <div class="col col--qf" data-round="qf-r">
+                    @foreach(array_slice($bracket['qf'], 2, 2) as $m)
+                        @include('worldcup.partials.match', ['m' => $m])
+                    @endforeach
+                </div>
+                <div class="col col--r16" data-round="r16-r">
+                    @foreach(array_slice($bracket['r16'], 4, 4) as $m)
+                        @include('worldcup.partials.match', ['m' => $m])
+                    @endforeach
+                </div>
+                <div class="col col--r32" data-round="r32-r">
+                    @foreach(array_slice($bracket['r32'], 8, 8) as $m)
+                        @include('worldcup.partials.match', ['m' => $m])
+                    @endforeach
+                </div>
+            </div>
+
+            {{-- Round headers (sticky on scroll) --}}
+            <ol class="bracket-headers" aria-hidden="true">
+                <li>Round of 32</li>
+                <li>Round of 16</li>
+                <li>Quarter-final</li>
+                <li>Semi-final</li>
+                <li>&nbsp;</li>
+                <li>Semi-final</li>
+                <li>Quarter-final</li>
+                <li>Round of 16</li>
+                <li>Round of 32</li>
+            </ol>
         </div>
     </section>
+
+    {{-- ==================== Recent results ==================== --}}
+    <section class="panel" id="recent-panel" hidden>
+        <h2 class="panel__title">Recent Results</h2>
+        <div id="recent-grid" class="match-grid"></div>
+    </section>
+
 </main>
 
 <footer class="foot">
-    <span>Data: TheSportsDB free API · cached server-side, polled every 10s</span>
+    Data: <a href="https://www.thesportsdb.com" rel="noopener">TheSportsDB</a> free API ·
+    flags by <a href="https://flagcdn.com" rel="noopener">flagcdn.com</a> ·
+    cached server-side, polled every 10 s
 </footer>
 
 <script>
