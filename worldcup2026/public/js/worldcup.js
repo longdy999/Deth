@@ -1,15 +1,15 @@
 /* ===========================================================================
  * FIFA World Cup 2026 — light-touch live overlay.
  *
- * The Blade template already renders the full scaffold (12 groups + 32-match
- * bracket). This script only patches it:
- *   1. Updates the stats / form / rank for each team row in place.
- *   2. Resolves bracket slot codes (1E, W74, …) into real teams/scores when
- *      the API has them.
- *   3. Builds match cards for the "Live" and "Recent" banners.
+ * The Blade template renders the full scaffold (12 groups + 32-match bracket).
+ * This script only patches it:
+ *   1. Updates stats / form / rank for each team row in place.
+ *   2. Resolves bracket slot codes (1E, W74, …) into real teams + scores
+ *      when the API has them.
+ *   3. Builds match cards for the "Live", "Up Next", and "Recent" banners.
  *
- * It polls /api/snapshot every 10 s — the backend caches everything so we
- * stay well under TheSportsDB's 30-requests/min free-tier limit.
+ * Polls /api/snapshot every 10 s — backend caches everything so we stay
+ * well under TheSportsDB's 30-requests/min free-tier limit.
  * =========================================================================== */
 (() => {
     const POLL_MS = 10_000;
@@ -34,28 +34,24 @@
         ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
     const flagUrl = (iso, size = 'w40') =>
-        iso ? `https://flagcdn.com/${size}/${iso}.png` : null;
+        iso ? `https://flagcdn.com/${size}/${iso.toLowerCase()}.png` : null;
 
-    // Parse "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DD HH:MM" into a Date.
     const parseKickoff = (s) => {
         if (!s) return null;
-        const d = new Date(s.replace(' ', 'T') + (s.length <= 10 ? '' : ''));
+        // Local time string from API (no Z). Browser interprets as local.
+        const d = new Date(s.replace(' ', 'T'));
         return isNaN(+d) ? null : d;
     };
-
     const fmtKickoff = (s) => {
         const d = parseKickoff(s);
         return d ? d.toLocaleString(undefined,
-            { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+            { weekday: 'short', month: 'short', day: 'numeric',
+              hour: '2-digit', minute: '2-digit' })
             : (s || '');
     };
 
-    // Normalize a team name so the SSR row's data-team and the API name line up.
-    // Static rows (group SSR) use the canonical names from WorldCupDraw, so the
-    // server snapshot returns the same canonical names for groups[*].table[*].team.
     const findRow = (team) => {
         if (!team) return null;
-        // Try exact match first; CSS selector doesn't like quotes inside, so use [data-team="…"]
         const escaped = team.replace(/"/g, '\\"');
         return document.querySelector(`.row[data-team="${escaped}"]`);
     };
@@ -64,12 +60,7 @@
 
     const updateStandings = (groups) => {
         if (!Array.isArray(groups)) return;
-
         for (const g of groups) {
-            // Re-rank rows in DOM order according to the sorted API order.
-            // The simplest approach: for each team in sorted order, move its
-            // existing row to the bottom of its group's <ol>. After all moves,
-            // the rows are in the correct order.
             const groupEl = document.querySelector(`.group[data-group="${g.letter}"]`);
             if (!groupEl) continue;
             const list = groupEl.querySelector('.group__rows');
@@ -81,11 +72,10 @@
                 row.dataset.rank = String(idx + 1);
                 row.querySelector('.rank').textContent = String(idx + 1);
 
-                // Stats
                 const setStat = (k, v) => {
                     const el = row.querySelector(`.stat[data-stat="${k}"]`);
-                    if (el) el.textContent =
-                        (k === 'gd' && v > 0) ? `+${v}` : String(v ?? 0);
+                    if (!el) return;
+                    el.textContent = (k === 'gd' && v > 0) ? `+${v}` : String(v ?? 0);
                 };
                 setStat('mp',  t.mp);
                 setStat('w',   t.w);
@@ -96,21 +86,18 @@
                 setStat('gd',  t.gd);
                 setStat('pts', t.pts);
 
-                // Form: replace 5 dashes with up to 5 colored dots, padded with dashes.
                 const form = row.querySelector('[data-form]');
                 if (form) {
                     const last5 = (t.form || []).slice(-5);
-                    const cells = ['', '', '', '', ''];
+                    const cells = [];
                     for (let i = 0; i < 5; i++) {
-                        cells[i] = last5[i]
+                        cells.push(last5[i]
                             ? `<span class="dot-form is-${last5[i].toLowerCase()}"></span>`
-                            : `<span class="dot-form">–</span>`;
+                            : `<span class="dot-form">–</span>`);
                     }
                     form.innerHTML = cells.join('');
                 }
-
-                // Move row to the new position.
-                list.appendChild(row);
+                list.appendChild(row); // re-order to match sorted position
             });
         }
     };
@@ -129,8 +116,7 @@
                     away: cell.querySelector('.brk__team[data-side="away"]'),
                 };
                 const apply = (side, name, iso, score) => {
-                    const el = sides[side];
-                    if (!el) return;
+                    const el = sides[side]; if (!el) return;
                     const nameEl  = el.querySelector('[data-name]');
                     const flagEl  = el.querySelector('[data-flag]');
                     const scoreEl = el.querySelector('[data-score]');
@@ -139,20 +125,16 @@
                         nameEl.textContent = name;
                         nameEl.classList.remove('is-placeholder');
                     } else {
-                        // No real team yet — keep the FIFA slot code, mark as placeholder.
                         nameEl.classList.add('is-placeholder');
                     }
                     flagEl.innerHTML = iso
-                        ? `<img src="${flagUrl(iso, 'w20')}" alt="">`
-                        : '';
+                        ? `<img src="${flagUrl(iso, 'w20')}" alt="">` : '';
                     scoreEl.textContent =
                         (score === null || score === undefined) ? '–' : String(score);
                 };
-
                 apply('home', m.home_team, m.home_iso, m.home_score);
                 apply('away', m.away_team, m.away_iso, m.away_score);
 
-                // Highlight winner once both scores are known.
                 const hs = m.home_score, as = m.away_score;
                 sides.home.classList.toggle('is-winner', hs !== null && as !== null && hs > as);
                 sides.away.classList.toggle('is-winner', hs !== null && as !== null && as > hs);
@@ -160,7 +142,7 @@
         }
     };
 
-    // ---------------- Live & Recent banners ----------------
+    // ---------------- Match cards (Live / Up Next / Recent) ----------------
 
     const isLive = (m) => {
         const s = (m.status || '').toLowerCase();
@@ -171,13 +153,15 @@
         const hs = m.home_score, as = m.away_score;
         const hasScore = hs !== null && hs !== undefined && as !== null && as !== undefined;
         const live = isLive(m);
-        const score = hasScore
-            ? `<span class="match__score">${hs} – ${as}</span>`
-            : `<span class="match__score match__score--vs">${escape(fmtKickoff(m.kickoff))}</span>`;
 
         const flag = (iso) => iso
-            ? `<img src="${flagUrl(iso, 'w40')}" alt="">`
-            : '';
+            ? `<img src="${flagUrl(iso, 'w40')}" alt="">` : '';
+
+        const center = hasScore
+            ? `${live ? '<div class="badge-live">Live</div>' : ''}
+               <div class="match__score">${hs} – ${as}</div>`
+            : `<div class="match__kickoff">${escape(fmtKickoff(m.kickoff))}</div>
+               <div class="match__score match__score--vs" style="font-size:13px;color:var(--muted);">vs</div>`;
 
         return `
             <article class="match">
@@ -186,7 +170,7 @@
                         ${flag(m.home_iso)}
                         <span class="match__name">${escape(m.home || 'TBD')}</span>
                     </div>
-                    <div>${live ? '<span class="badge-live">Live</span>' : ''}${score}</div>
+                    <div class="match__center">${center}</div>
                     <div class="match__team match__team--away">
                         <span class="match__name">${escape(m.away || 'TBD')}</span>
                         ${flag(m.away_iso)}
@@ -194,13 +178,13 @@
                 </div>
                 <div class="match__meta">
                     <span>${escape(m.venue || '')}</span>
-                    <span>${escape(m.status || '')}</span>
+                    <span>${escape(m.status === 'NS' ? 'Not started' : (m.status || ''))}</span>
                 </div>
             </article>`;
     };
 
-    const renderBanner = (panelId, gridId, items, headingFallback) => {
-        const panel = $(panelId), grid = $(gridId);
+    const renderBanner = (panelSel, gridSel, items) => {
+        const panel = $(panelSel), grid = $(gridSel);
         if (!panel || !grid) return;
         if (!items || !items.length) {
             panel.hidden = true;
@@ -224,8 +208,9 @@
 
             updateStandings(data.groups);
             updateBracket(data.bracket);
-            renderBanner('#live-panel',   '#live-grid',   data.live);
-            renderBanner('#recent-panel', '#recent-grid', data.recent);
+            renderBanner('#live-panel',     '#live-grid',     data.live);
+            renderBanner('#upcoming-panel', '#upcoming-grid', (data.upcoming || []).slice(0, 6));
+            renderBanner('#recent-panel',   '#recent-grid',   data.recent);
 
             setStatus('ok', 'live');
             lastUpdated.textContent = ' · updated ' + new Date().toLocaleTimeString();

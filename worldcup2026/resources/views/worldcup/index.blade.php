@@ -28,13 +28,19 @@
 
 <main>
 
-    {{-- ==================== Live banner ==================== --}}
-    <section class="panel panel--compact" id="live-panel" hidden>
+    {{-- Live banner (hidden until live) --}}
+    <section class="panel" id="live-panel" hidden>
         <h2 class="panel__title">Live Now</h2>
         <div id="live-grid" class="match-grid"></div>
     </section>
 
-    {{-- ==================== STANDINGS ==================== --}}
+    {{-- Upcoming --}}
+    <section class="panel" id="upcoming-panel" hidden>
+        <h2 class="panel__title">Up Next</h2>
+        <div id="upcoming-grid" class="match-grid"></div>
+    </section>
+
+    {{-- STANDINGS --}}
     <section class="panel">
         <h2 class="panel__title">Standings</h2>
 
@@ -43,34 +49,36 @@
                 <article class="group" data-group="{{ $letter }}">
                     <header class="group__head">
                         <h3>Group {{ $letter }}</h3>
-                        <div class="group__cols">
+                        <div class="group__cols" aria-hidden="true">
                             <span title="Played">P</span>
                             <span title="Wins">W</span>
                             <span title="Draws">D</span>
                             <span title="Losses">L</span>
-                            <span title="Goals For">GF</span>
-                            <span title="Goals Against">GA</span>
-                            <span title="Goal Difference">GD</span>
-                            <span title="Points" class="pts">Pts</span>
-                            <span title="Form (last 5)" class="form">Form</span>
+                            <span class="hide-sm" title="Goals For">GF</span>
+                            <span class="hide-sm" title="Goals Against">GA</span>
+                            <span class="hide-xs" title="Goal Difference">GD</span>
+                            <span class="pts" title="Points">Pts</span>
+                            <span class="form-h hide-xs" title="Form (last 5)">Form</span>
                         </div>
                     </header>
 
                     <ol class="group__rows">
                         @foreach($teams as $i => $t)
-                            <li class="row" data-team="{{ $t['team'] }}">
+                            <li class="row" data-team="{{ $t['team'] }}" data-rank="{{ $i + 1 }}">
                                 <span class="rank">{{ $i + 1 }}</span>
-                                <span class="flag"><img src="https://flagcdn.com/w40/{{ $t['iso'] }}.png" alt="" loading="lazy"></span>
+                                <span class="flag">
+                                    <img src="https://flagcdn.com/w40/{{ $t['iso'] }}.png" alt="" loading="lazy">
+                                </span>
                                 <span class="team">{{ $t['team'] }}</span>
                                 <span class="stat" data-stat="mp">0</span>
                                 <span class="stat" data-stat="w">0</span>
                                 <span class="stat" data-stat="d">0</span>
                                 <span class="stat" data-stat="l">0</span>
-                                <span class="stat" data-stat="gf">0</span>
-                                <span class="stat" data-stat="ga">0</span>
-                                <span class="stat" data-stat="gd">0</span>
+                                <span class="stat hide-sm" data-stat="gf">0</span>
+                                <span class="stat hide-sm" data-stat="ga">0</span>
+                                <span class="stat hide-xs" data-stat="gd">0</span>
                                 <span class="stat pts" data-stat="pts">0</span>
-                                <span class="form" data-form>
+                                <span class="form hide-xs" data-form>
                                     <span class="dot-form">–</span><span class="dot-form">–</span><span class="dot-form">–</span><span class="dot-form">–</span><span class="dot-form">–</span>
                                 </span>
                             </li>
@@ -81,28 +89,43 @@
         </div>
 
         <p class="legend">
-            <strong>P</strong> = Matches Played &nbsp;
-            <strong>W</strong> = Wins &nbsp;
-            <strong>D</strong> = Draws &nbsp;
-            <strong>L</strong> = Losses &nbsp;
-            <strong>GF</strong> = Goals For &nbsp;
-            <strong>GA</strong> = Goals Against &nbsp;
-            <strong>GD</strong> = Goal Difference &nbsp;
-            <strong>Pts</strong> = Points
-            <br>
-            <strong>Form:</strong>
-            <span class="dot-form is-w" title="Win"></span> Win
-            <span class="dot-form is-d" title="Draw"></span> Draw
-            <span class="dot-form is-l" title="Loss"></span> Loss
-            <span class="dot-form" title="Not played">–</span> Not played
+            <strong>P</strong>=Played &nbsp;
+            <strong>W</strong>=Wins &nbsp;
+            <strong>D</strong>=Draws &nbsp;
+            <strong>L</strong>=Losses &nbsp;
+            <span class="hide-sm"><strong>GF</strong>=Goals For &nbsp;<strong>GA</strong>=Goals Against &nbsp;</span>
+            <span class="hide-xs"><strong>GD</strong>=Goal Difference &nbsp;</span>
+            <strong>Pts</strong>=Points
+            <span class="hide-xs">
+                <br>
+                <strong>Form:</strong>
+                <span class="dot-form is-w" title="Win"></span> Win
+                <span class="dot-form is-d" title="Draw"></span> Draw
+                <span class="dot-form is-l" title="Loss"></span> Loss
+                <span class="dot-form" title="Not played">–</span> Not played
+            </span>
         </p>
     </section>
 
-    {{-- ==================== KNOCKOUT BRACKET ==================== --}}
-    <section class="panel">
+    {{-- KNOCKOUT BRACKET --}}
+    <section class="panel panel--bracket">
         <h2 class="panel__title">Knockout bracket</h2>
+        <p class="bracket-hint" id="bracket-hint">Scroll horizontally →</p>
 
-        <div class="bracket-wrap">
+        <div class="bracket-wrap" id="bracket-wrap">
+            {{-- Round headers, scroll-synced with the bracket below --}}
+            <ol class="bracket-headers" aria-hidden="true">
+                <li>Round of 32</li>
+                <li>Round of 16</li>
+                <li>Quarter-final</li>
+                <li>Semi-final</li>
+                <li>Final</li>
+                <li>Semi-final</li>
+                <li>Quarter-final</li>
+                <li>Round of 16</li>
+                <li>Round of 32</li>
+            </ol>
+
             <div class="bracket" id="bracket">
                 {{-- Left side: R32 → R16 → QF → SF --}}
                 <div class="col col--r32" data-round="r32-l">
@@ -124,7 +147,7 @@
                     @include('worldcup.partials.match', ['m' => $bracket['sf'][0]])
                 </div>
 
-                {{-- Center: Final --}}
+                {{-- Center: Final + 3rd place --}}
                 <div class="col col--final" data-round="final">
                     <div class="final-stack">
                         <div class="round-label">Final</div>
@@ -155,23 +178,10 @@
                     @endforeach
                 </div>
             </div>
-
-            {{-- Round headers (sticky on scroll) --}}
-            <ol class="bracket-headers" aria-hidden="true">
-                <li>Round of 32</li>
-                <li>Round of 16</li>
-                <li>Quarter-final</li>
-                <li>Semi-final</li>
-                <li>&nbsp;</li>
-                <li>Semi-final</li>
-                <li>Quarter-final</li>
-                <li>Round of 16</li>
-                <li>Round of 32</li>
-            </ol>
         </div>
     </section>
 
-    {{-- ==================== Recent results ==================== --}}
+    {{-- Recent results --}}
     <section class="panel" id="recent-panel" hidden>
         <h2 class="panel__title">Recent Results</h2>
         <div id="recent-grid" class="match-grid"></div>
