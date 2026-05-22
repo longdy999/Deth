@@ -33,9 +33,19 @@ class WorldCupController extends Controller
         $season = $snap['season'] ?? [];
 
         // Shape the match cards (uniform keys for the JS).
-        $snap['live']     = array_map(fn($e) => $this->shapeMatch($e), $snap['live'] ?? []);
-        $snap['upcoming'] = array_map(fn($e) => $this->shapeMatch($e), $snap['upcoming'] ?? []);
-        $snap['recent']   = array_map(fn($e) => $this->shapeMatch($e), $snap['recent'] ?? []);
+        $snap['live']     = array_map(fn($e) => $this->shapeMatch($e, 'live'),     $snap['live'] ?? []);
+        $snap['upcoming'] = array_map(fn($e) => $this->shapeMatch($e, 'upcoming'), $snap['upcoming'] ?? []);
+        $snap['recent']   = array_map(fn($e) => $this->shapeMatch($e, 'recent'),   $snap['recent'] ?? []);
+        if (!empty($snap['featured'])) {
+            // Decide bucket by checking the source live array (raw, not yet shaped).
+            $rawLive  = $this->sports->snapshot()['live'] ?? [];
+            $isLiveFt = false;
+            $ftId     = $snap['featured']['idEvent'] ?? null;
+            foreach ($rawLive as $rl) {
+                if (($rl['idEvent'] ?? null) === $ftId) { $isLiveFt = true; break; }
+            }
+            $snap['featured'] = $this->shapeMatch($snap['featured'], $isLiveFt ? 'live' : 'upcoming');
+        }
 
         // Standings: start from the static draw, then overlay played-match results.
         $snap['groups']  = $this->buildGroupStandings($season);
@@ -211,19 +221,36 @@ class WorldCupController extends Controller
 
     // ---------- Shared helpers ----------
 
-    private function shapeMatch(array $e): array
+    private function shapeMatch(array $e, ?string $bucket = null): array
     {
+        $hs        = $this->intOrNull($e['intHomeScore'] ?? null);
+        $as        = $this->intOrNull($e['intAwayScore'] ?? null);
+        $rawStatus = strtolower((string)($e['strStatus'] ?? ''));
+
+        // Friendly status: Finished | Live | Upcoming
+        if (in_array($rawStatus, ['in play', '1h', '2h', 'ht', 'live'], true) || $bucket === 'live') {
+            $status = 'Live';
+        } elseif ($hs !== null && $as !== null) {
+            $status = 'Finished';
+        } elseif ($bucket === 'recent') {
+            $status = 'Finished';
+        } else {
+            $status = 'Upcoming';
+        }
+
         return [
             'id'         => $e['idEvent'] ?? null,
             'home'       => $e['strHomeTeam'] ?? 'TBD',
             'away'       => $e['strAwayTeam'] ?? 'TBD',
             'home_iso'   => WorldCupDraw::isoFor((string)($e['strHomeTeam'] ?? '')),
             'away_iso'   => WorldCupDraw::isoFor((string)($e['strAwayTeam'] ?? '')),
-            'home_score' => $this->intOrNull($e['intHomeScore'] ?? null),
-            'away_score' => $this->intOrNull($e['intAwayScore'] ?? null),
+            'home_score' => $hs,
+            'away_score' => $as,
             'kickoff'    => trim(($e['dateEvent'] ?? '') . ' ' . ($e['strTime'] ?? '')),
             'venue'      => $e['strVenue'] ?? null,
-            'status'     => $e['strStatus'] ?? null,
+            'round'      => $e['strRound'] ?? null,
+            'status'     => $status,
+            'raw_status' => $e['strStatus'] ?? null,
         ];
     }
 

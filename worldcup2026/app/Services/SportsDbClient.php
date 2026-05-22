@@ -11,8 +11,8 @@ use Illuminate\Support\Facades\Log;
  *
  * Rate-limit safety:
  *   - Free tier: 30 requests/min.
- *   - All endpoints are cached (Laravel cache) so multiple page visitors
- *     share the same upstream call. Worst case we issue ~5 req/min total.
+ *   - All endpoints are cached so multiple page visitors share the same
+ *     upstream call. Worst case we issue ~7 req/min total.
  */
 class SportsDbClient
 {
@@ -29,7 +29,7 @@ class SportsDbClient
         $this->baseUrl  = rtrim((string) config('sportsdb.base_url', 'https://www.thesportsdb.com/api/v1/json'), '/');
     }
 
-    /** Next 15 upcoming events for the league. */
+    /** Next upcoming events for the league. */
     public function nextEvents(): array
     {
         return $this->cached('wc:next', 30, function () {
@@ -37,7 +37,7 @@ class SportsDbClient
         });
     }
 
-    /** Last 15 finished events for the league (results). */
+    /** Last finished events for the league. */
     public function pastEvents(): array
     {
         return $this->cached('wc:past', 60, function () {
@@ -56,7 +56,18 @@ class SportsDbClient
         });
     }
 
-    /** League metadata (name, logo, badge, description). */
+    /** Events for a specific past season (e.g. '2022', '2018'). */
+    public function eventsForSeason(string $season): array
+    {
+        return $this->cached("wc:season:$season", 6 * 3600, function () use ($season) {
+            return $this->get("/{$this->apiKey}/eventsseason.php", [
+                'id' => $this->leagueId,
+                's'  => $season,
+            ])['events'] ?? [];
+        });
+    }
+
+    /** League metadata. */
     public function league(): ?array
     {
         return $this->cached('wc:league', 3600, function () {
@@ -67,39 +78,114 @@ class SportsDbClient
 
     /**
      * Combined snapshot used by the dashboard.
-     * Returns: live, upcoming, recent, season, league.
+     * Returns: league, featured, live, upcoming, recent, season, fetched_at.
+     *
+     * Guarantees ≥3 items in `upcoming` and `recent` whenever possible by
+     * padding from seasonEvents (future-dated, no score) and from previous
+     * World Cup seasons (2022, 2018, 2014).
      */
     public function snapshot(): array
     {
         $next   = $this->nextEvents();
         $past   = $this->pastEvents();
         $season = $this->seasonEvents();
+        $now    = time();
 
-        // "Live" heuristic: status set to 'In Play'/'1H'/'2H'/'HT', or any past event in
-        // the last 3 hours with no final score (safety net since free tier has no livescore).
+        // ---- LIVE ---------------------------------------------------------
         $live = [];
-        $upcoming = [];
-        $now = time();
+        $upcomingFromNext = [];
         foreach ($next as $e) {
             $status = strtolower((string)($e['strStatus'] ?? ''));
             if (in_array($status, ['in play', '1h', '2h', 'ht', 'live'], true)) {
                 $live[] = $e;
             } else {
-                $upcoming[] = $e;
+                $upcomingFromNext[] = $e;
             }
         }
 
+        // ---- UPCOMING (chronological, dedup) ------------------------------
+        $upcomingPool = $upcomingFromNext;
+        foreach ($season as $e) {
+            $kickoff = $this->kickoffTs($e);
+            if ($kickoff !== null && $kickoff > $now) {
+                $upcomingPool[] = $e;
+            }
+        }
+        $upcoming = $this->dedupeAndSort($upcomingPool, asc: true);
+        $upcoming = array_slice($upcoming, 0, 12);
+
+        // ---- RECENT (need ≥3, pad from past WC seasons) -------------------
+        $recentPool = [];
+        foreach ($past as $e) $recentPool[] = $e;
+        foreach ($season as $e) {
+            $kickoff = $this->kickoffTs($e);
+            $hs = $e['intHomeScore'] ?? null;
+            $as = $e['intAwayScore'] ?? null;
+            $hasScore = $hs !== null && $hs !== '' && $as !== null && $as !== '';
+            if ($kickoff !== null && $kickoff < $now && $hasScore) {
+                $recentPool[] = $e;
+            }
+        }
+        $recentPool = $this->dedupeAndSort($recentPool, asc: false);
+
+        if (count($recentPool) < 3) {
+            foreach (['2022', '2018', '2014'] as $s) {
+                if (count($recentPool) >= 6) break;
+                $hist = $this->eventsForSeason($s);
+                $hist = array_filter($hist, function ($e) {
+                    $hs = $e['intHomeScore'] ?? null; $as = $e['intAwayScore'] ?? null;
+                    return $hs !== null && $hs !== '' && $as !== null && $as !== '';
+                });
+                $recentPool = array_merge($recentPool, array_values($hist));
+                $recentPool = $this->dedupeAndSort($recentPool, asc: false);
+            }
+        }
+        $recent = array_slice($recentPool, 0, 6);
+
+        // ---- FEATURED (live > next-upcoming) ------------------------------
+        $featured = $live[0] ?? ($upcoming[0] ?? null);
+
         return [
-            'league'   => $this->league(),
-            'live'     => $live,
-            'upcoming' => array_slice($upcoming, 0, 10),
-            'recent'   => array_slice($past, 0, 10),
-            'season'   => $season,
+            'league'     => $this->league(),
+            'featured'   => $featured,
+            'live'       => $live,
+            'upcoming'   => $upcoming,
+            'recent'     => $recent,
+            'season'     => $season,
             'fetched_at' => date('c', $now),
         ];
     }
 
     // -------- internals --------
+
+    private function kickoffTs(array $e): ?int
+    {
+        $date = $e['dateEvent'] ?? null;
+        $time = $e['strTime'] ?? '00:00:00';
+        if (!$date) return null;
+        $ts = strtotime("$date $time UTC");
+        return $ts ?: null;
+    }
+
+    private function dedupeAndSort(array $events, bool $asc = true): array
+    {
+        $byId = [];
+        foreach ($events as $e) {
+            $id = $e['idEvent'] ?? null;
+            if ($id === null) {
+                $byId[spl_object_hash((object)$e)] = $e;
+            } else {
+                $byId[$id] = $e;
+            }
+        }
+        $events = array_values($byId);
+        usort($events, function ($a, $b) use ($asc) {
+            $ta = $this->kickoffTs($a) ?? 0;
+            $tb = $this->kickoffTs($b) ?? 0;
+            return $asc ? ($ta <=> $tb) : ($tb <=> $ta);
+        });
+        return $events;
+    }
 
     private function cached(string $key, int $ttl, \Closure $fetcher): mixed
     {
