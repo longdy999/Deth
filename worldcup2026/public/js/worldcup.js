@@ -1,23 +1,18 @@
 /* ===========================================================================
  * FIFA World Cup 26 — Match Center
  *
- * Two-layer architecture:
- *   1. Server pre-renders the full skeleton (12 group tables + 32-match
- *      bracket with FIFA slot codes).
- *   2. JS polls /api/snapshot every 10 s and patches in:
- *        - hero featured match,
- *        - up-next + recent results sections,
- *        - standings stats & re-ordering,
- *        - bracket cells (resolves slot codes into real teams).
- *
- * Also handles the dark/light theme toggle (persisted in localStorage).
+ * Three responsibilities:
+ *   1. Theme toggle — light/dark, persisted in localStorage.
+ *   2. Full-screen bracket — Fullscreen API + CSS-only fallback.
+ *   3. Live overlay — polls /api/snapshot every 10 s and patches the
+ *      pre-rendered scaffold (hero, up-next, recent, standings, bracket).
  * =========================================================================== */
 (() => {
     const POLL_MS = 10_000;
     const $  = (sel, root = document) => root.querySelector(sel);
     const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-    // ===================== Theme toggle =====================================
+    /* =========================== Theme toggle ============================== */
     const themeToggle = $('#theme-toggle');
     const setTheme = (mode) => {
         document.documentElement.dataset.theme = mode;
@@ -29,7 +24,6 @@
             setTheme(cur === 'dark' ? 'light' : 'dark');
         });
     }
-    // Update colour-scheme of the document for native form controls
     const syncColorScheme = () => {
         document.documentElement.style.colorScheme = document.documentElement.dataset.theme;
     };
@@ -37,7 +31,56 @@
     new MutationObserver(syncColorScheme).observe(document.documentElement,
         { attributes: true, attributeFilter: ['data-theme'] });
 
-    // ===================== Status & helpers =================================
+    /* =========================== Full-screen bracket ======================= */
+    const bracketPanel = $('#bracket');
+    const fsEnter = $('#fs-enter');
+    const fsExit  = $('#fs-exit');
+
+    const isNativeFullscreen = () =>
+        document.fullscreenElement === bracketPanel
+        || document.webkitFullscreenElement === bracketPanel;
+
+    const exitFullscreen = () => {
+        if (document.exitFullscreen) {
+            document.exitFullscreen().catch(() => {});
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        }
+        if (bracketPanel) bracketPanel.classList.remove('is-fullscreen-fallback');
+        document.body.style.overflow = '';
+    };
+
+    const enterFullscreen = () => {
+        if (!bracketPanel) return;
+        const req = bracketPanel.requestFullscreen
+                 || bracketPanel.webkitRequestFullscreen;
+        if (req) {
+            req.call(bracketPanel).catch(() => {
+                // Native API rejected — fall back to CSS-only mode.
+                bracketPanel.classList.add('is-fullscreen-fallback');
+                document.body.style.overflow = 'hidden';
+            });
+        } else {
+            bracketPanel.classList.add('is-fullscreen-fallback');
+            document.body.style.overflow = 'hidden';
+        }
+    };
+
+    if (fsEnter) fsEnter.addEventListener('click', enterFullscreen);
+    if (fsExit)  fsExit.addEventListener('click', exitFullscreen);
+
+    // Sync body scroll lock with native fullscreen state
+    document.addEventListener('fullscreenchange', () => {
+        if (!isNativeFullscreen()) document.body.style.overflow = '';
+    });
+    // Escape key exits the CSS-only fallback (native FS handles its own)
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && bracketPanel && bracketPanel.classList.contains('is-fullscreen-fallback')) {
+            exitFullscreen();
+        }
+    });
+
+    /* =========================== Status & helpers ========================= */
     const dot         = $('#status-dot');
     const statusText  = $('#status-text');
     const lastUpdated = $('#last-updated');
@@ -69,8 +112,7 @@
             hour: '2-digit', minute: '2-digit'
         });
     };
-    const fmtDate = (s) => fmtKickoff(s,
-        { weekday: 'short', month: 'short', day: 'numeric' });
+    const fmtDate = (s) => fmtKickoff(s, { weekday: 'short', month: 'short', day: 'numeric' });
     const fmtTime = (s) => fmtKickoff(s, { hour: '2-digit', minute: '2-digit' });
 
     const findRow = (team) => {
@@ -78,11 +120,10 @@
         const escaped = team.replace(/"/g, '\\"');
         return document.querySelector(`.row[data-team="${escaped}"]`);
     };
-
     const isLive     = (m) => (m && m.status) === 'Live';
     const isFinished = (m) => (m && m.status) === 'Finished';
 
-    // ===================== Hero featured match ==============================
+    /* =========================== Hero ===================================== */
     const renderHero = (m) => {
         const card = $('#featured-card');
         if (!card) return;
@@ -90,8 +131,7 @@
             card.innerHTML = '<div style="opacity:.7;text-align:center">No featured match.</div>';
             return;
         }
-        const live     = isLive(m);
-        const finished = isFinished(m);
+        const live = isLive(m);
         const hasScore = m.home_score !== null && m.home_score !== undefined
                       && m.away_score !== null && m.away_score !== undefined;
 
@@ -122,7 +162,7 @@
         `;
     };
 
-    // ===================== Match card (Up Next / Recent) ====================
+    /* =========================== Match cards ============================== */
     const matchCard = (m) => {
         const live     = isLive(m);
         const finished = isFinished(m);
@@ -188,7 +228,7 @@
         el.textContent = n ? `${n} ${label}` : '';
     };
 
-    // ===================== Standings overlay ================================
+    /* =========================== Standings ================================ */
     const updateStandings = (groups) => {
         if (!Array.isArray(groups)) return;
         for (const g of groups) {
@@ -228,12 +268,12 @@
                     }
                     form.innerHTML = cells.join('');
                 }
-                tbody.appendChild(row);   // re-order to sorted position
+                tbody.appendChild(row); // re-order to match sorted position
             });
         }
     };
 
-    // ===================== Bracket overlay ==================================
+    /* =========================== Bracket overlay ========================== */
     const updateBracket = (rounds) => {
         if (!Array.isArray(rounds)) return;
         for (const r of rounds) {
@@ -272,7 +312,7 @@
         }
     };
 
-    // ===================== Polling ==========================================
+    /* =========================== Polling ================================== */
     let inFlight = false;
     const poll = async () => {
         if (inFlight) return;
