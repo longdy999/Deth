@@ -108,36 +108,38 @@
         if (!Array.isArray(rounds)) return;
         for (const r of rounds) {
             for (const m of (r.matches || [])) {
-                const cell = document.querySelector(`.brk[data-mid="${m.id}"]`);
-                if (!cell) continue;
+                // Each match id renders twice (desktop tree + mobile strip),
+                // so update every copy in the DOM.
+                const cells = document.querySelectorAll(`.brk[data-mid="${m.id}"]`);
+                cells.forEach((cell) => {
+                    const sides = {
+                        home: cell.querySelector('.brk__team[data-side="home"]'),
+                        away: cell.querySelector('.brk__team[data-side="away"]'),
+                    };
+                    const apply = (side, name, iso, score) => {
+                        const el = sides[side]; if (!el) return;
+                        const nameEl  = el.querySelector('[data-name]');
+                        const flagEl  = el.querySelector('[data-flag]');
+                        const scoreEl = el.querySelector('[data-score]');
 
-                const sides = {
-                    home: cell.querySelector('.brk__team[data-side="home"]'),
-                    away: cell.querySelector('.brk__team[data-side="away"]'),
-                };
-                const apply = (side, name, iso, score) => {
-                    const el = sides[side]; if (!el) return;
-                    const nameEl  = el.querySelector('[data-name]');
-                    const flagEl  = el.querySelector('[data-flag]');
-                    const scoreEl = el.querySelector('[data-score]');
+                        if (name) {
+                            nameEl.textContent = name;
+                            nameEl.classList.remove('is-placeholder');
+                        } else {
+                            nameEl.classList.add('is-placeholder');
+                        }
+                        flagEl.innerHTML = iso
+                            ? `<img src="${flagUrl(iso, 'w20')}" alt="">` : '';
+                        scoreEl.textContent =
+                            (score === null || score === undefined) ? '–' : String(score);
+                    };
+                    apply('home', m.home_team, m.home_iso, m.home_score);
+                    apply('away', m.away_team, m.away_iso, m.away_score);
 
-                    if (name) {
-                        nameEl.textContent = name;
-                        nameEl.classList.remove('is-placeholder');
-                    } else {
-                        nameEl.classList.add('is-placeholder');
-                    }
-                    flagEl.innerHTML = iso
-                        ? `<img src="${flagUrl(iso, 'w20')}" alt="">` : '';
-                    scoreEl.textContent =
-                        (score === null || score === undefined) ? '–' : String(score);
-                };
-                apply('home', m.home_team, m.home_iso, m.home_score);
-                apply('away', m.away_team, m.away_iso, m.away_score);
-
-                const hs = m.home_score, as = m.away_score;
-                sides.home.classList.toggle('is-winner', hs !== null && as !== null && hs > as);
-                sides.away.classList.toggle('is-winner', hs !== null && as !== null && as > hs);
+                    const hs = m.home_score, as = m.away_score;
+                    sides.home.classList.toggle('is-winner', hs !== null && as !== null && hs > as);
+                    sides.away.classList.toggle('is-winner', hs !== null && as !== null && as > hs);
+                });
             }
         }
     };
