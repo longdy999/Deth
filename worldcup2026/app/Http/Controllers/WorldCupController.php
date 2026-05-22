@@ -20,9 +20,33 @@ class WorldCupController extends Controller
     public function index(): View
     {
         return view('worldcup.index', [
-            'league'   => $this->sports->league(),
-            'groups'   => WorldCupDraw::groups(),   // for server-side render
-            'bracket'  => WorldCupDraw::bracket(),  // for server-side render
+            'page'    => 'home',
+            'league'  => $this->sports->league(),
+            'groups'  => WorldCupDraw::groups(),
+            'bracket' => WorldCupDraw::bracket(),
+        ]);
+    }
+
+    /** Dedicated Group Stage page. */
+    public function groups(): View
+    {
+        return view('worldcup.groups', [
+            'page'         => 'groups',
+            'league'       => $this->sports->league(),
+            'groups'       => WorldCupDraw::groups(),
+            'bracket'      => WorldCupDraw::bracket(),
+            'groupMatches' => $this->groupMatchesByLetter(),
+        ]);
+    }
+
+    /** Dedicated Knockout Bracket page. */
+    public function bracket(): View
+    {
+        return view('worldcup.bracket', [
+            'page'    => 'bracket',
+            'league'  => $this->sports->league(),
+            'groups'  => WorldCupDraw::groups(),
+            'bracket' => WorldCupDraw::bracket(),
         ]);
     }
 
@@ -267,5 +291,58 @@ class WorldCupController extends Controller
             $s = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s) ?: $s;
         }
         return $s;
+    }
+
+    /**
+     * Bucket season events by group letter (A..L) for the Group Stage page.
+     * A match is "in" a group when both teams belong to the same group in
+     * the static draw. Each match is shaped like the API endpoints.
+     *
+     * @return array<string, array<int, array>>
+     */
+    private function groupMatchesByLetter(): array
+    {
+        $events = $this->sports->seasonEvents();
+        $draw   = WorldCupDraw::groups();
+
+        $teamGroup = [];
+        foreach ($draw as $letter => $teams) {
+            foreach ($teams as $t) {
+                $teamGroup[$this->normalize($t['team'])] = $letter;
+            }
+        }
+        $aliases = [
+            'south korea' => 'Korea Republic',
+            'czech republic' => 'Czechia',
+            'bosnia-herzegovina' => 'Bosnia and Herzegovina',
+            'ivory coast' => "Côte d'Ivoire",
+            'iran' => 'IR Iran',
+            'cape verde' => 'Cabo Verde',
+            'turkey' => 'Türkiye',
+            'dr congo' => 'Congo DR',
+            'curacao' => 'Curaçao',
+        ];
+        $resolve = function (?string $name) use ($teamGroup, $aliases): ?string {
+            if (!$name) return null;
+            $norm = $this->normalize($name);
+            $canonical = $aliases[$norm] ?? $name;
+            return isset($teamGroup[$this->normalize($canonical)]) ? $canonical : null;
+        };
+
+        $byGroup = array_fill_keys(array_keys($draw), []);
+        foreach ($events as $e) {
+            $h = $resolve($e['strHomeTeam'] ?? null);
+            $a = $resolve($e['strAwayTeam'] ?? null);
+            if (!$h || !$a) continue;
+            $gh = $teamGroup[$this->normalize($h)] ?? null;
+            $ga = $teamGroup[$this->normalize($a)] ?? null;
+            if (!$gh || $gh !== $ga) continue;
+            $byGroup[$gh][] = $this->shapeMatch($e);
+        }
+        // Sort each group's matches chronologically.
+        foreach ($byGroup as &$list) {
+            usort($list, fn($x, $y) => strcmp($x['kickoff'] ?? '', $y['kickoff'] ?? ''));
+        }
+        return $byGroup;
     }
 }
