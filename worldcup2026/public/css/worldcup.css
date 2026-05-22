@@ -1,7 +1,8 @@
-/* ==========================================================================
-   FIFA World Cup 2026 — dashboard styles
-   FIFA-inspired clean/light theme
-   ========================================================================== */
+/* ===========================================================================
+ * FIFA World Cup 2026 — dashboard styles
+ * Light/clean theme inspired by fifa.com
+ * Mobile-first responsive: works from 320px → 1920px+
+ * =========================================================================== */
 
 :root {
     --bg:        #f5f5f7;
@@ -10,15 +11,16 @@
     --line-2:    #f0f1f4;
     --text:      #14161a;
     --muted:     #6b7280;
-    --accent:    #1f3a8a;     /* FIFA-ish navy */
-    --w:         #1aa260;     /* Win green */
-    --d:         #9aa0a6;     /* Draw grey */
-    --l:         #d93025;     /* Loss red */
+    --accent:    #1f3a8a;
+    --w:         #1aa260;
+    --d:         #9aa0a6;
+    --l:         #d93025;
     --live:      #d93025;
+    --highlight: #f4f8ff;
     --radius:    8px;
 }
 
-* { box-sizing: border-box; }
+*, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
     background: var(--bg);
@@ -30,108 +32,175 @@ body {
 }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
+img { max-width: 100%; }
 
-/* -------- Top bar ------------------------------------------------------- */
+/* Responsive helpers */
+.hide-xs { /* hidden on phones (<480px) */ }
+.hide-sm { /* hidden on small tablets (<720px) */ }
+@media (max-width: 719px)  { .hide-sm { display: none !important; } }
+@media (max-width: 479px)  { .hide-xs { display: none !important; } }
+
+/* ============================ TOP BAR ===================================== */
 .topbar {
     display: flex; align-items: center; justify-content: space-between;
-    gap: 16px; padding: 14px 24px;
+    gap: 12px; padding: 12px 20px;
     background: #fff; border-bottom: 1px solid var(--line);
     position: sticky; top: 0; z-index: 20;
 }
-.brand { display: flex; align-items: center; gap: 14px; }
-.brand__logo { width: 44px; height: 44px; object-fit: contain; }
-.brand h1 { margin: 0; font-size: 18px; font-weight: 700; letter-spacing: .2px; }
-.brand__sub { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
-.status { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.brand__logo { width: 40px; height: 40px; object-fit: contain; flex: none; }
+.brand h1 {
+    margin: 0; font-size: 17px; font-weight: 700; letter-spacing: .2px;
+    white-space: nowrap;
+}
+.brand__sub {
+    margin: 2px 0 0; font-size: 12px; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.status {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; color: var(--muted); white-space: nowrap;
+}
 .dot { width: 8px; height: 8px; border-radius: 50%; background: #c7c9ce; transition: .2s; }
 .dot.ok  { background: var(--w); box-shadow: 0 0 0 4px #1aa26022; }
 .dot.err { background: var(--l); box-shadow: 0 0 0 4px #d9302522; }
 .muted { color: var(--muted); }
 
-/* -------- Layout -------------------------------------------------------- */
+@media (max-width: 540px) {
+    .topbar { padding: 10px 14px; }
+    .brand h1 { font-size: 15px; }
+    .brand__sub { font-size: 11px; }
+    .status #last-updated { display: none; }
+}
+
+/* ============================ LAYOUT ====================================== */
 main {
     max-width: 1320px; margin: 0 auto;
-    padding: 22px 16px 60px; display: grid; gap: 22px;
+    padding: 18px 16px 40px; display: grid; gap: 18px;
 }
+@media (max-width: 540px) {
+    main { padding: 12px 10px 30px; gap: 12px; }
+}
+
 .panel {
     background: var(--panel); border: 1px solid var(--line);
     border-radius: var(--radius); padding: 18px 22px;
 }
-.panel--compact { padding: 14px 18px; }
+.panel--bracket { padding-bottom: 12px; }
 .panel__title {
     margin: 0 0 14px; font-size: 22px; font-weight: 700; letter-spacing: -.01em;
 }
+@media (max-width: 540px) {
+    .panel { padding: 14px 12px; }
+    .panel__title { font-size: 18px; margin-bottom: 10px; }
+}
+
 .legend {
     margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--line);
-    font-size: 12px; color: var(--muted); line-height: 1.8;
+    font-size: 12px; color: var(--muted); line-height: 1.9;
 }
 .legend strong { color: var(--text); font-weight: 600; }
 
-/* -------- Standings (12 groups) ---------------------------------------- */
-.standings {
-    display: grid; gap: 10px;
-}
+/* ============================ STANDINGS =================================== */
+.standings { display: grid; gap: 10px; }
+
 .group {
     background: #fff; border: 1px solid var(--line);
     border-radius: var(--radius); overflow: hidden;
 }
+
+/*
+ * Important: header columns and row stat columns share the SAME track sizes
+ * via shared CSS variables, so the labels (P W D L GF GA GD Pts Form) line
+ * up perfectly above their stats on every screen size.
+ */
+.group {
+    --col-stat:  36px;
+    --col-rank:  26px;
+    --col-flag:  30px;
+    --col-team:  minmax(0, 1fr);
+    --col-pts:   42px;
+    --col-form:  110px;
+    --row-pad-x: 14px;
+}
+@media (max-width: 720px) {
+    .group { --col-stat: 32px; --col-form: 90px; --col-pts: 38px; }
+}
+@media (max-width: 480px) {
+    .group { --col-stat: 30px; --col-pts: 36px; --row-pad-x: 10px; }
+}
+
 .group__head {
-    display: grid; grid-template-columns: 1fr auto;
-    align-items: center; padding: 12px 16px;
-    background: #fafbfc; border-bottom: 1px solid var(--line);
+    display: grid;
+    grid-template-columns:
+        var(--col-rank) var(--col-flag) var(--col-team)
+        repeat(7, var(--col-stat)) var(--col-pts) var(--col-form);
+    align-items: center;
+    column-gap: 4px;
+    padding: 10px var(--row-pad-x);
+    background: #fafbfc;
+    border-bottom: 1px solid var(--line);
 }
 .group__head h3 {
-    margin: 0; font-size: 16px; font-weight: 700;
+    grid-column: 1 / 4;            /* span rank+flag+team area */
+    margin: 0; font-size: 15px; font-weight: 700;
 }
 .group__cols {
-    display: grid;
-    grid-template-columns: repeat(8, 36px) 110px;
-    gap: 0;
-    font-size: 11px; color: var(--muted); font-weight: 600;
+    display: contents;             /* let its children participate in the parent grid */
+}
+.group__cols > span {
+    text-align: center;
+    font-size: 11px; font-weight: 600; color: var(--muted);
     text-transform: uppercase; letter-spacing: .04em;
 }
-.group__cols span { text-align: center; }
-.group__cols .pts { color: var(--text); }
-.group__cols .form { width: 110px; }
+.group__cols > .pts { color: var(--text); }
+.group__cols > .form-h { text-align: left; padding-left: 4px; }
 
 .group__rows { list-style: none; margin: 0; padding: 0; }
 .row {
     display: grid;
-    grid-template-columns: 28px 28px 1fr repeat(8, 36px) 110px;
+    grid-template-columns:
+        var(--col-rank) var(--col-flag) var(--col-team)
+        repeat(7, var(--col-stat)) var(--col-pts) var(--col-form);
     align-items: center;
-    padding: 10px 16px;
+    column-gap: 4px;
+    padding: 11px var(--row-pad-x);
     border-bottom: 1px solid var(--line-2);
     font-size: 14px;
 }
 .row:last-child { border-bottom: 0; }
-.row .rank { color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+.row .rank {
+    color: var(--muted); font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    text-align: left;
+}
 .row .flag { display: flex; align-items: center; justify-content: center; }
 .row .flag img {
-    width: 22px; height: auto; border-radius: 2px;
+    width: 24px; height: auto; border-radius: 2px;
     box-shadow: 0 0 0 1px rgba(0,0,0,.08);
     display: block;
 }
 .row .team {
-    font-weight: 500; padding-right: 8px;
+    font-weight: 500; padding: 0 6px 0 4px;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    min-width: 0;
 }
 .row .stat {
     text-align: center; font-variant-numeric: tabular-nums;
-    color: var(--text);
 }
-.row .stat.pts { font-weight: 700; color: var(--text); }
+.row .stat.pts { font-weight: 700; }
 
-/* highlight top-2 of each group (qualifiers) */
+/* qualifier highlight (top 2 of each group) */
 .row[data-rank="1"], .row[data-rank="2"] {
-    background: #f4f8ff;
-    border-left: 3px solid var(--accent);
-    padding-left: 13px;
+    background: var(--highlight);
+    box-shadow: inset 3px 0 0 var(--accent);
 }
 
 /* Form (last 5) */
 .form {
-    display: inline-flex; gap: 4px; align-items: center; justify-content: flex-start;
-    width: 110px;
+    display: inline-flex; gap: 4px; align-items: center;
+    justify-content: flex-start;
+    overflow: hidden;
 }
 .dot-form {
     width: 16px; height: 16px; border-radius: 50%;
@@ -139,6 +208,7 @@ main {
     display: inline-flex; align-items: center; justify-content: center;
     font-size: 10px; line-height: 1; font-weight: 700;
     border: 1px solid var(--line);
+    flex: none;
 }
 .dot-form.is-w { background: var(--w); border-color: var(--w); color: #fff; }
 .dot-form.is-w::before { content: "W"; }
@@ -147,101 +217,127 @@ main {
 .dot-form.is-l { background: var(--l); border-color: var(--l); color: #fff; }
 .dot-form.is-l::before { content: "L"; }
 
-/* -------- Live & Recent match cards ------------------------------------- */
+/* ============================ MATCH CARDS (Live / Up Next / Recent) ======= */
 .match-grid {
     display: grid; gap: 10px;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
 }
 .match {
     background: #fff; border: 1px solid var(--line);
-    border-radius: var(--radius); padding: 10px 14px;
-    display: grid; gap: 6px;
+    border-radius: var(--radius); padding: 12px 14px;
+    display: grid; gap: 8px;
 }
 .match__teams {
-    display: grid; grid-template-columns: 1fr auto 1fr;
-    align-items: center; gap: 10px;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center; gap: 12px;
 }
 .match__team {
-    display: flex; align-items: center; gap: 8px; min-width: 0;
+    display: flex; align-items: center; gap: 8px;
+    min-width: 0;
 }
 .match__team--away { justify-content: flex-end; }
 .match__team img {
     width: 24px; height: auto; border-radius: 2px;
     box-shadow: 0 0 0 1px rgba(0,0,0,.06);
+    flex: none;
 }
 .match__name {
-    font-weight: 500; white-space: nowrap;
-    overflow: hidden; text-overflow: ellipsis;
+    font-weight: 600; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; min-width: 0;
+}
+.match__center {
+    text-align: center; min-width: 70px;
 }
 .match__score {
-    font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums;
-    min-width: 60px; text-align: center;
+    font-weight: 700; font-size: 20px; font-variant-numeric: tabular-nums;
+    line-height: 1;
 }
-.match__score--vs { color: var(--muted); font-weight: 500; font-size: 13px; }
+.match__kickoff {
+    font-size: 12px; color: var(--muted); white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
 .match__meta {
-    display: flex; justify-content: space-between;
+    display: flex; justify-content: space-between; gap: 10px;
     color: var(--muted); font-size: 12px;
+    border-top: 1px dashed var(--line-2); padding-top: 6px;
 }
+.match__meta span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .badge-live {
     display: inline-block; background: var(--live); color: #fff;
     padding: 1px 7px; border-radius: 3px;
     font-size: 10px; letter-spacing: .5px; text-transform: uppercase;
-    margin-right: 6px; vertical-align: middle;
+    margin-bottom: 4px;
     animation: pulse 1.6s infinite;
 }
 @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .55 } }
 
-/* ===========================================================================
-   KNOCKOUT BRACKET
-   9 columns: R32L | R16L | QFL | SFL | FINAL | SFR | QFR | R16R | R32R
-   =========================================================================== */
+/* ============================ KNOCKOUT BRACKET ============================ */
+.bracket-hint {
+    margin: -6px 0 8px;
+    font-size: 12px; color: var(--muted);
+    display: none;
+}
 .bracket-wrap {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    /* tame the scroll: smooth + a small fade on right edge */
+    mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+    -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
 }
+.bracket-wrap::-webkit-scrollbar { height: 8px; }
+.bracket-wrap::-webkit-scrollbar-thumb {
+    background: #d4d8de; border-radius: 4px;
+}
+
+.bracket,
 .bracket-headers {
-    display: grid;
-    grid-template-columns:
-        var(--col-r32, 200px) var(--col-r16, 200px) var(--col-qf, 200px) var(--col-sf, 200px)
-        var(--col-final, 240px)
-        var(--col-sf, 200px) var(--col-qf, 200px) var(--col-r16, 200px) var(--col-r32, 200px);
-    list-style: none; padding: 0; margin: 0 0 8px;
-    font-size: 11px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: .06em; color: var(--muted);
-    min-width: max-content;
+    --col-r32:   180px;
+    --col-r16:   180px;
+    --col-qf:    180px;
+    --col-sf:    180px;
+    --col-final: 220px;
 }
-.bracket-headers li { padding: 6px 10px; text-align: center; }
 
-.bracket {
-    --col-r32:   200px;
-    --col-r16:   200px;
-    --col-qf:    200px;
-    --col-sf:    200px;
-    --col-final: 240px;
-    --row-h-r32: 76px;   /* match cell vertical pitch in R32 column */
-
+.bracket-headers {
     display: grid;
     grid-template-columns:
         var(--col-r32) var(--col-r16) var(--col-qf) var(--col-sf)
         var(--col-final)
         var(--col-sf) var(--col-qf) var(--col-r16) var(--col-r32);
-    gap: 0;
+    list-style: none; padding: 0; margin: 0 0 8px;
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .06em; color: var(--muted);
+    min-width: max-content;
+    position: sticky; top: 0; z-index: 1;
+    background: #fff;
+}
+.bracket-headers li { padding: 6px 8px; text-align: center; }
+
+.bracket {
+    display: grid;
+    grid-template-columns:
+        var(--col-r32) var(--col-r16) var(--col-qf) var(--col-sf)
+        var(--col-final)
+        var(--col-sf) var(--col-qf) var(--col-r16) var(--col-r32);
     min-width: max-content;
     align-items: stretch;
+    padding-bottom: 12px;
 }
 .col {
     display: flex; flex-direction: column; justify-content: space-around;
-    padding: 6px 8px;
+    padding: 6px 6px;
     border-right: 1px solid var(--line-2);
+    min-height: 100%;
 }
 .col:last-child { border-right: 0; }
 .col--final {
-    justify-content: center; align-items: center;
-    padding: 0 12px;
+    justify-content: center; align-items: stretch;
+    padding: 0 10px;
     background: linear-gradient(180deg, #fafbfc, #fff 30%, #fff 70%, #fafbfc);
 }
 .final-stack {
-    display: flex; flex-direction: column; gap: 14px; align-items: stretch;
+    display: flex; flex-direction: column; gap: 12px;
     width: 100%;
 }
 .round-label {
@@ -249,14 +345,14 @@ main {
     color: var(--accent); text-transform: uppercase; letter-spacing: .08em;
     margin-top: 4px;
 }
-.round-label--small { color: var(--muted); font-size: 11px; margin-top: 8px; }
+.round-label--small { color: var(--muted); font-size: 11px; margin-top: 6px; }
 
-/* Match cell in the bracket */
+/* Bracket match cell */
 .brk {
     background: #fff; border: 1px solid var(--line);
-    border-radius: 6px; padding: 8px 10px; margin: 4px 0;
+    border-radius: 6px; padding: 7px 9px; margin: 4px 0;
     box-shadow: 0 1px 0 rgba(0,0,0,.02);
-    display: grid; gap: 6px;
+    display: grid; gap: 5px;
 }
 .brk__hd {
     display: flex; justify-content: space-between; align-items: center;
@@ -264,14 +360,15 @@ main {
     border-bottom: 1px dashed var(--line-2); padding-bottom: 4px;
 }
 .brk__date { font-variant-numeric: tabular-nums; }
-.brk__id { font-weight: 600; color: var(--accent); }
-.brk__teams { display: grid; gap: 4px; }
+.brk__id { font-weight: 700; color: var(--accent); }
+.brk__teams { display: grid; gap: 3px; }
 .brk__team {
     display: grid; grid-template-columns: 22px 1fr auto;
     align-items: center; gap: 8px;
-    font-size: 13px;
+    font-size: 12.5px;
+    line-height: 1.2;
 }
-.brk__flag { width: 22px; height: 16px; display: inline-block; }
+.brk__flag { width: 22px; height: 16px; }
 .brk__flag img {
     width: 22px; height: auto; border-radius: 1px; display: block;
     box-shadow: 0 0 0 1px rgba(0,0,0,.08);
@@ -281,8 +378,8 @@ main {
     font-weight: 500;
 }
 .brk__name.is-placeholder {
-    font-weight: 400; color: var(--muted);
-    font-feature-settings: "tnum" 1;
+    color: var(--muted); font-weight: 400;
+    font-variant-numeric: tabular-nums;
 }
 .brk__score {
     font-variant-numeric: tabular-nums; font-weight: 700;
@@ -294,34 +391,40 @@ main {
 .brk--big {
     border: 2px solid var(--accent);
     box-shadow: 0 6px 22px rgba(31, 58, 138, .12);
-    padding: 12px 14px;
+    padding: 11px 13px;
 }
 .brk--big .brk__id { font-size: 12px; }
-.brk--big .brk__team { font-size: 15px; }
+.brk--big .brk__team { font-size: 14px; }
 
-/* On smaller screens: scroll bracket horizontally */
+/* Bracket sizing tweaks */
 @media (max-width: 1100px) {
-    .bracket {
-        --col-r32: 180px;
-        --col-r16: 180px;
-        --col-qf:  180px;
-        --col-sf:  180px;
-        --col-final: 220px;
+    .bracket, .bracket-headers {
+        --col-r32: 170px;
+        --col-r16: 170px;
+        --col-qf:  170px;
+        --col-sf:  170px;
+        --col-final: 200px;
     }
+    .bracket-hint { display: block; }
 }
-
 @media (max-width: 720px) {
-    .group__cols, .row {
-        grid-template-columns: 28px 28px 1fr repeat(8, 30px) 96px;
-        font-size: 13px;
+    .bracket, .bracket-headers {
+        --col-r32: 160px;
+        --col-r16: 160px;
+        --col-qf:  160px;
+        --col-sf:  160px;
+        --col-final: 180px;
     }
-    .group__cols { grid-template-columns: repeat(8, 30px) 96px; }
-    .panel { padding: 14px 12px; }
-    .panel__title { font-size: 18px; }
+    .brk { padding: 6px 8px; }
+    .brk__team { font-size: 11.5px; gap: 6px; grid-template-columns: 18px 1fr auto; }
+    .brk__flag { width: 18px; height: 13px; }
+    .brk__flag img { width: 18px; }
+    .panel--bracket { padding-left: 10px; padding-right: 10px; }
 }
 
-/* -------- Footer -------------------------------------------------------- */
+/* ============================ FOOTER ====================================== */
 .foot {
-    max-width: 1320px; margin: 24px auto 30px;
+    max-width: 1320px; margin: 18px auto 26px;
     padding: 0 16px; color: var(--muted); font-size: 12px; text-align: center;
 }
+.foot a { color: var(--muted); text-decoration: underline; }
