@@ -31,11 +31,10 @@ class WorldCupController extends Controller
     public function groups(): View
     {
         return view('worldcup.groups', [
-            'page'         => 'groups',
-            'league'       => $this->sports->league(),
-            'groups'       => WorldCupDraw::groups(),
-            'bracket'      => WorldCupDraw::bracket(),
-            'groupMatches' => $this->groupMatchesByLetter(),
+            'page'    => 'groups',
+            'league'  => $this->sports->league(),
+            'groups'  => WorldCupDraw::groups(),
+            'bracket' => WorldCupDraw::bracket(),
         ]);
     }
 

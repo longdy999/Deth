@@ -18,7 +18,6 @@
 
     <div class="groups-grid" id="standings">
         @foreach($groups as $letter => $teams)
-            @php($matches = $groupMatches[$letter] ?? [])
             <article class="group-card" data-group="{{ $letter }}">
                 <header class="group-card__head">
                     <h2>Group {{ $letter }}</h2>
@@ -64,37 +63,6 @@
                         </tbody>
                     </table>
                 </div>
-
-                @if(count($matches))
-                    <div class="group-card__matches">
-                        <h3 class="group-card__matches-title">Fixtures</h3>
-                        @foreach($matches as $m)
-                            <div class="gmatch">
-                                <span class="gmatch__date">
-                                    @php($d = \Illuminate\Support\Carbon::parse($m['kickoff'] ?? null))
-                                    {{ $d ? $d->format('d M · H:i') : '' }}
-                                </span>
-                                <span class="gmatch__teams">
-                                    @if(!empty($m['home_iso']))
-                                        <img src="https://flagcdn.com/w20/{{ $m['home_iso'] }}.png" alt="">
-                                    @endif
-                                    <span>{{ $m['home'] ?? 'TBD' }}</span>
-                                    <em class="gmatch__score">
-                                        @if($m['home_score'] !== null && $m['away_score'] !== null)
-                                            {{ $m['home_score'] }}–{{ $m['away_score'] }}
-                                        @else
-                                            vs
-                                        @endif
-                                    </em>
-                                    <span>{{ $m['away'] ?? 'TBD' }}</span>
-                                    @if(!empty($m['away_iso']))
-                                        <img src="https://flagcdn.com/w20/{{ $m['away_iso'] }}.png" alt="">
-                                    @endif
-                                </span>
-                            </div>
-                        @endforeach
-                    </div>
-                @endif
             </article>
         @endforeach
     </div>

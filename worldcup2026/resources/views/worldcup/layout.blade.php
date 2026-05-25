@@ -89,7 +89,7 @@
 <footer class="foot">
     <span>Data: <a href="https://www.thesportsdb.com" rel="noopener">TheSportsDB</a> ·
     Flags: <a href="https://flagcdn.com" rel="noopener">flagcdn.com</a> ·
-    Cached server-side, polled every 10 s</span>
+    All times shown in <strong>Cambodia time (ICT, UTC+7)</strong></span>
     <span class="muted" id="last-updated"></span>
 </footer>
 

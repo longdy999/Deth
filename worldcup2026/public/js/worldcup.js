@@ -91,21 +91,36 @@
     const flagUrl = (iso, size = 'w40') =>
         iso ? `https://flagcdn.com/${size}/${iso.toLowerCase()}.png` : null;
 
+    /*
+     * All match times are displayed in CAMBODIA time (Asia/Phnom_Penh, ICT,
+     * UTC+7). We assume the API/server datetimes are UTC, so we append 'Z'
+     * before parsing and use timeZone: 'Asia/Phnom_Penh' on toLocaleString.
+     */
+    const TZ = 'Asia/Phnom_Penh';
     const parseKickoff = (s) => {
         if (!s) return null;
-        const d = new Date(s.replace(' ', 'T'));
+        // Treat naïve strings as UTC.
+        const d = new Date(s.replace(' ', 'T') + 'Z');
         return isNaN(+d) ? null : d;
     };
     const fmtKickoff = (s, opts) => {
         const d = parseKickoff(s);
         if (!d) return s || '';
-        return d.toLocaleString(undefined, opts || {
+        const o = Object.assign({
             weekday: 'short', month: 'short', day: 'numeric',
-            hour: '2-digit', minute: '2-digit'
-        });
+            hour: '2-digit', minute: '2-digit',
+            timeZone: TZ,
+        }, opts || {});
+        return d.toLocaleString('en-US', o);
     };
-    const fmtDate = (s) => fmtKickoff(s, { weekday: 'short', month: 'short', day: 'numeric' });
-    const fmtTime = (s) => fmtKickoff(s, { hour: '2-digit', minute: '2-digit' });
+    const fmtDate = (s) => fmtKickoff(s, {
+        weekday: 'short', month: 'short', day: 'numeric',
+        hour: undefined, minute: undefined,
+    });
+    const fmtTime = (s) => fmtKickoff(s, {
+        weekday: undefined, month: undefined, day: undefined,
+        hour: '2-digit', minute: '2-digit',
+    });
 
     const findRow = (team) => {
         if (!team) return null;
@@ -375,7 +390,13 @@
             updateChampion(data.bracket);
 
             setStatus('ok', 'live');
-            if (lastUpdated) lastUpdated.textContent = 'Updated ' + new Date().toLocaleTimeString();
+            if (lastUpdated) {
+                const now = new Date().toLocaleTimeString('en-US', {
+                    hour: '2-digit', minute: '2-digit', second: '2-digit',
+                    timeZone: TZ, hour12: true,
+                });
+                lastUpdated.textContent = 'Updated ' + now + ' ICT';
+            }
         } catch (e) {
             setStatus('err', 'connection issue');
             if (lastUpdated) lastUpdated.textContent = 'Retrying…';

@@ -1,7 +1,11 @@
 {{-- A bracket match cell. Expects $m with FIFA-shaped fields. $big = optional. --}}
 @php
+    /*
+     * Bracket dates are stored as UTC strings in WorldCupDraw, so parse as
+     * UTC and convert to Cambodia time (Asia/Phnom_Penh, ICT, UTC+7).
+     */
     $big      = $big ?? false;
-    $kickoff  = \Illuminate\Support\Carbon::parse($m['date']);
+    $kickoff  = \Illuminate\Support\Carbon::parse($m['date'], 'UTC')->setTimezone('Asia/Phnom_Penh');
     $dateText = $kickoff->format('d M');
     $timeText = $kickoff->format('H:i');
 @endphp
