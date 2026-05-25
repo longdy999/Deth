@@ -92,35 +92,31 @@
         iso ? `https://flagcdn.com/${size}/${iso.toLowerCase()}.png` : null;
 
     /*
-     * All match times are displayed in CAMBODIA time (Asia/Phnom_Penh, ICT,
-     * UTC+7). We assume the API/server datetimes are UTC, so we append 'Z'
-     * before parsing and use timeZone: 'Asia/Phnom_Penh' on toLocaleString.
+     * Time formatters: every output is in CAMBODIA time
+     * (Asia/Phnom_Penh, ICT, UTC+7). The API returns naïve strings,
+     * we treat them as UTC. Verified: API "2026-06-11 19:00:00"
+     * -> "Fri, Jun 12, 02:00 AM" in Cambodia.
      */
     const TZ = 'Asia/Phnom_Penh';
     const parseKickoff = (s) => {
         if (!s) return null;
-        // Treat naïve strings as UTC.
         const d = new Date(s.replace(' ', 'T') + 'Z');
         return isNaN(+d) ? null : d;
     };
-    const fmtKickoff = (s, opts) => {
-        const d = parseKickoff(s);
-        if (!d) return s || '';
-        const o = Object.assign({
+    const fmtDate = (s) => {
+        const d = parseKickoff(s); if (!d) return s || '';
+        return d.toLocaleString('en-US', {
             weekday: 'short', month: 'short', day: 'numeric',
-            hour: '2-digit', minute: '2-digit',
             timeZone: TZ,
-        }, opts || {});
-        return d.toLocaleString('en-US', o);
+        });
     };
-    const fmtDate = (s) => fmtKickoff(s, {
-        weekday: 'short', month: 'short', day: 'numeric',
-        hour: undefined, minute: undefined,
-    });
-    const fmtTime = (s) => fmtKickoff(s, {
-        weekday: undefined, month: undefined, day: undefined,
-        hour: '2-digit', minute: '2-digit',
-    });
+    const fmtTime = (s) => {
+        const d = parseKickoff(s); if (!d) return s || '';
+        return d.toLocaleString('en-US', {
+            hour: '2-digit', minute: '2-digit', hour12: true,
+            timeZone: TZ,
+        });
+    };
 
     const findRow = (team) => {
         if (!team) return null;
@@ -149,7 +145,7 @@
         const center = hasScore
             ? `<div class="hero__score">${m.home_score} – ${m.away_score}</div>
                <span class="hero__status ${live ? 'hero__status--live' : ''}">${live ? 'Live' : 'Full Time'}</span>`
-            : `<div class="hero__kickoff">${escape(fmtDate(m.kickoff))}<br>${escape(fmtTime(m.kickoff))}</div>
+            : `<div class="hero__kickoff">${escape(fmtDate(m.kickoff))}<br>${escape(fmtTime(m.kickoff))} ICT</div>
                <span class="hero__status">Upcoming</span>`;
 
         card.innerHTML = `
@@ -210,7 +206,7 @@
                 </div>
                 <div class="match__meta">
                     <span>${escape(m.venue || '—')}</span>
-                    <span>${m.kickoff ? escape(fmtTime(m.kickoff)) : ''}</span>
+                    <span>${m.kickoff ? escape(fmtTime(m.kickoff)) + ' ICT' : ''}</span>
                 </div>
             </article>`;
     };

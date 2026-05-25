@@ -2,13 +2,35 @@
 
 @section('title', 'Knockout Bracket — FIFA World Cup 26')
 
+@php
+    /*
+     * Build the Cambodia-time strings for the page header and the
+     * champion banner from the actual stored UTC dates so they always
+     * match the bracket cell labels.
+     */
+    $tz       = 'Asia/Phnom_Penh';
+    $r32First = $bracket['r32'][0]['date'] ?? null;
+    $finalDt  = $bracket['final'][0]['date'] ?? null;
+
+    $startICT = $r32First ? \Illuminate\Support\Carbon::parse($r32First, 'UTC')->setTimezone($tz) : null;
+    $finalICT = $finalDt  ? \Illuminate\Support\Carbon::parse($finalDt,  'UTC')->setTimezone($tz) : null;
+
+    $rangeText = ($startICT && $finalICT)
+        ? $startICT->format('d M') . ' – ' . $finalICT->format('d M Y')
+        : '28 Jun – 20 Jul 2026';
+
+    $finalInfo = $finalICT
+        ? 'Final · ' . $finalICT->format('d M Y · H:i') . ' ICT · MetLife Stadium, New York/New Jersey'
+        : 'Final · MetLife Stadium, New York/New Jersey';
+@endphp
+
 @section('content')
 <main class="main--wide">
 
     <header class="page-head">
         <div>
             <h1 class="page-head__title">Knockout Bracket</h1>
-            <p class="page-head__sub">Round of 32 → Final · 28 Jun – 19 Jul 2026</p>
+            <p class="page-head__sub">Round of 32 → Final · {{ $rangeText }}</p>
         </div>
         <div class="page-head__actions">
             <button id="fs-enter" class="btn-fs" type="button" title="Open bracket in full screen">
@@ -55,7 +77,7 @@
                         <span class="champion__name" data-name>To Be Decided</span>
                     </div>
                     <div class="champion__final-info">
-                        Final · 19 Jul 2026 · MetLife Stadium, New York/New Jersey
+                        {{ $finalInfo }}
                     </div>
                 </div>
                 @if(!empty($league['strBadge']))
