@@ -4,7 +4,7 @@
 
 @php
     /*
-     * Build the Cambodia-time strings for the page header and the
+     * Build the Phnom Penh time strings for the page header and the
      * champion banner from the actual stored UTC dates so they always
      * match the bracket cell labels.
      */
@@ -12,15 +12,15 @@
     $r32First = $bracket['r32'][0]['date'] ?? null;
     $finalDt  = $bracket['final'][0]['date'] ?? null;
 
-    $startICT = $r32First ? \Illuminate\Support\Carbon::parse($r32First, 'UTC')->setTimezone($tz) : null;
-    $finalICT = $finalDt  ? \Illuminate\Support\Carbon::parse($finalDt,  'UTC')->setTimezone($tz) : null;
+    $startLocal = $r32First ? \Illuminate\Support\Carbon::parse($r32First, 'UTC')->setTimezone($tz) : null;
+    $finalLocal = $finalDt  ? \Illuminate\Support\Carbon::parse($finalDt,  'UTC')->setTimezone($tz) : null;
 
-    $rangeText = ($startICT && $finalICT)
-        ? $startICT->format('d M') . ' – ' . $finalICT->format('d M Y')
+    $rangeText = ($startLocal && $finalLocal)
+        ? $startLocal->format('d M') . ' – ' . $finalLocal->format('d M Y')
         : '28 Jun – 20 Jul 2026';
 
-    $finalInfo = $finalICT
-        ? 'Final · ' . $finalICT->format('d M Y · H:i') . ' ICT · MetLife Stadium, New York/New Jersey'
+    $finalInfo = $finalLocal
+        ? 'Final · ' . $finalLocal->format('d M Y · H:i') . ' Phnom Penh · MetLife Stadium, New York/New Jersey'
         : 'Final · MetLife Stadium, New York/New Jersey';
 @endphp
 

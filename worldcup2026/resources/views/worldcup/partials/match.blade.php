@@ -2,7 +2,7 @@
 @php
     /*
      * Bracket dates are stored as UTC strings in WorldCupDraw, so parse as
-     * UTC and convert to Cambodia time (Asia/Phnom_Penh, ICT, UTC+7).
+     * UTC and convert to Phnom Penh time (Asia/Phnom_Penh, UTC+7).
      */
     $big      = $big ?? false;
     $kickoff  = \Illuminate\Support\Carbon::parse($m['date'], 'UTC')->setTimezone('Asia/Phnom_Penh');

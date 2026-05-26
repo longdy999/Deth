@@ -92,10 +92,10 @@
         iso ? `https://flagcdn.com/${size}/${iso.toLowerCase()}.png` : null;
 
     /*
-     * Time formatters: every output is in CAMBODIA time
-     * (Asia/Phnom_Penh, ICT, UTC+7). The API returns naïve strings,
+     * Time formatters: every output is in PHNOM PENH time
+     * (Asia/Phnom_Penh, UTC+7). The API returns naïve strings,
      * we treat them as UTC. Verified: API "2026-06-11 19:00:00"
-     * -> "Fri, Jun 12, 02:00 AM" in Cambodia.
+     * -> "Fri, Jun 12, 02:00 AM" in Phnom Penh.
      */
     const TZ = 'Asia/Phnom_Penh';
     const parseKickoff = (s) => {
@@ -145,7 +145,7 @@
         const center = hasScore
             ? `<div class="hero__score">${m.home_score} – ${m.away_score}</div>
                <span class="hero__status ${live ? 'hero__status--live' : ''}">${live ? 'Live' : 'Full Time'}</span>`
-            : `<div class="hero__kickoff">${escape(fmtDate(m.kickoff))}<br>${escape(fmtTime(m.kickoff))} ICT</div>
+            : `<div class="hero__kickoff">${escape(fmtDate(m.kickoff))}<br>${escape(fmtTime(m.kickoff))} Phnom Penh</div>
                <span class="hero__status">Upcoming</span>`;
 
         card.innerHTML = `
@@ -206,7 +206,7 @@
                 </div>
                 <div class="match__meta">
                     <span>${escape(m.venue || '—')}</span>
-                    <span>${m.kickoff ? escape(fmtTime(m.kickoff)) + ' ICT' : ''}</span>
+                    <span>${m.kickoff ? escape(fmtTime(m.kickoff)) + ' Phnom Penh' : ''}</span>
                 </div>
             </article>`;
     };
@@ -391,7 +391,7 @@
                     hour: '2-digit', minute: '2-digit', second: '2-digit',
                     timeZone: TZ, hour12: true,
                 });
-                lastUpdated.textContent = 'Updated ' + now + ' ICT';
+                lastUpdated.textContent = 'Updated ' + now + ' Phnom Penh';
             }
         } catch (e) {
             setStatus('err', 'connection issue');
