@@ -20,9 +20,32 @@ class WorldCupController extends Controller
     public function index(): View
     {
         return view('worldcup.index', [
-            'league'   => $this->sports->league(),
-            'groups'   => WorldCupDraw::groups(),   // for server-side render
-            'bracket'  => WorldCupDraw::bracket(),  // for server-side render
+            'page'    => 'home',
+            'league'  => $this->sports->league(),
+            'groups'  => WorldCupDraw::groups(),
+            'bracket' => WorldCupDraw::bracket(),
+        ]);
+    }
+
+    /** Dedicated Group Stage page. */
+    public function groups(): View
+    {
+        return view('worldcup.groups', [
+            'page'    => 'groups',
+            'league'  => $this->sports->league(),
+            'groups'  => WorldCupDraw::groups(),
+            'bracket' => WorldCupDraw::bracket(),
+        ]);
+    }
+
+    /** Dedicated Knockout Bracket page. */
+    public function bracket(): View
+    {
+        return view('worldcup.bracket', [
+            'page'    => 'bracket',
+            'league'  => $this->sports->league(),
+            'groups'  => WorldCupDraw::groups(),
+            'bracket' => WorldCupDraw::bracket(),
         ]);
     }
 
@@ -33,9 +56,19 @@ class WorldCupController extends Controller
         $season = $snap['season'] ?? [];
 
         // Shape the match cards (uniform keys for the JS).
-        $snap['live']     = array_map(fn($e) => $this->shapeMatch($e), $snap['live'] ?? []);
-        $snap['upcoming'] = array_map(fn($e) => $this->shapeMatch($e), $snap['upcoming'] ?? []);
-        $snap['recent']   = array_map(fn($e) => $this->shapeMatch($e), $snap['recent'] ?? []);
+        $snap['live']     = array_map(fn($e) => $this->shapeMatch($e, 'live'),     $snap['live'] ?? []);
+        $snap['upcoming'] = array_map(fn($e) => $this->shapeMatch($e, 'upcoming'), $snap['upcoming'] ?? []);
+        $snap['recent']   = array_map(fn($e) => $this->shapeMatch($e, 'recent'),   $snap['recent'] ?? []);
+        if (!empty($snap['featured'])) {
+            // Decide bucket by checking the source live array (raw, not yet shaped).
+            $rawLive  = $this->sports->snapshot()['live'] ?? [];
+            $isLiveFt = false;
+            $ftId     = $snap['featured']['idEvent'] ?? null;
+            foreach ($rawLive as $rl) {
+                if (($rl['idEvent'] ?? null) === $ftId) { $isLiveFt = true; break; }
+            }
+            $snap['featured'] = $this->shapeMatch($snap['featured'], $isLiveFt ? 'live' : 'upcoming');
+        }
 
         // Standings: start from the static draw, then overlay played-match results.
         $snap['groups']  = $this->buildGroupStandings($season);
@@ -211,19 +244,36 @@ class WorldCupController extends Controller
 
     // ---------- Shared helpers ----------
 
-    private function shapeMatch(array $e): array
+    private function shapeMatch(array $e, ?string $bucket = null): array
     {
+        $hs        = $this->intOrNull($e['intHomeScore'] ?? null);
+        $as        = $this->intOrNull($e['intAwayScore'] ?? null);
+        $rawStatus = strtolower((string)($e['strStatus'] ?? ''));
+
+        // Friendly status: Finished | Live | Upcoming
+        if (in_array($rawStatus, ['in play', '1h', '2h', 'ht', 'live'], true) || $bucket === 'live') {
+            $status = 'Live';
+        } elseif ($hs !== null && $as !== null) {
+            $status = 'Finished';
+        } elseif ($bucket === 'recent') {
+            $status = 'Finished';
+        } else {
+            $status = 'Upcoming';
+        }
+
         return [
             'id'         => $e['idEvent'] ?? null,
             'home'       => $e['strHomeTeam'] ?? 'TBD',
             'away'       => $e['strAwayTeam'] ?? 'TBD',
             'home_iso'   => WorldCupDraw::isoFor((string)($e['strHomeTeam'] ?? '')),
             'away_iso'   => WorldCupDraw::isoFor((string)($e['strAwayTeam'] ?? '')),
-            'home_score' => $this->intOrNull($e['intHomeScore'] ?? null),
-            'away_score' => $this->intOrNull($e['intAwayScore'] ?? null),
+            'home_score' => $hs,
+            'away_score' => $as,
             'kickoff'    => trim(($e['dateEvent'] ?? '') . ' ' . ($e['strTime'] ?? '')),
             'venue'      => $e['strVenue'] ?? null,
-            'status'     => $e['strStatus'] ?? null,
+            'round'      => $e['strRound'] ?? null,
+            'status'     => $status,
+            'raw_status' => $e['strStatus'] ?? null,
         ];
     }
 
@@ -240,5 +290,58 @@ class WorldCupController extends Controller
             $s = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s) ?: $s;
         }
         return $s;
+    }
+
+    /**
+     * Bucket season events by group letter (A..L) for the Group Stage page.
+     * A match is "in" a group when both teams belong to the same group in
+     * the static draw. Each match is shaped like the API endpoints.
+     *
+     * @return array<string, array<int, array>>
+     */
+    private function groupMatchesByLetter(): array
+    {
+        $events = $this->sports->seasonEvents();
+        $draw   = WorldCupDraw::groups();
+
+        $teamGroup = [];
+        foreach ($draw as $letter => $teams) {
+            foreach ($teams as $t) {
+                $teamGroup[$this->normalize($t['team'])] = $letter;
+            }
+        }
+        $aliases = [
+            'south korea' => 'Korea Republic',
+            'czech republic' => 'Czechia',
+            'bosnia-herzegovina' => 'Bosnia and Herzegovina',
+            'ivory coast' => "Côte d'Ivoire",
+            'iran' => 'IR Iran',
+            'cape verde' => 'Cabo Verde',
+            'turkey' => 'Türkiye',
+            'dr congo' => 'Congo DR',
+            'curacao' => 'Curaçao',
+        ];
+        $resolve = function (?string $name) use ($teamGroup, $aliases): ?string {
+            if (!$name) return null;
+            $norm = $this->normalize($name);
+            $canonical = $aliases[$norm] ?? $name;
+            return isset($teamGroup[$this->normalize($canonical)]) ? $canonical : null;
+        };
+
+        $byGroup = array_fill_keys(array_keys($draw), []);
+        foreach ($events as $e) {
+            $h = $resolve($e['strHomeTeam'] ?? null);
+            $a = $resolve($e['strAwayTeam'] ?? null);
+            if (!$h || !$a) continue;
+            $gh = $teamGroup[$this->normalize($h)] ?? null;
+            $ga = $teamGroup[$this->normalize($a)] ?? null;
+            if (!$gh || $gh !== $ga) continue;
+            $byGroup[$gh][] = $this->shapeMatch($e);
+        }
+        // Sort each group's matches chronologically.
+        foreach ($byGroup as &$list) {
+            usort($list, fn($x, $y) => strcmp($x['kickoff'] ?? '', $y['kickoff'] ?? ''));
+        }
+        return $byGroup;
     }
 }
